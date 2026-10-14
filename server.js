@@ -42,6 +42,9 @@ const GEMINI_MODEL = cliModel || process.env.GEMINI_MODEL || "gemini-3.5-flash-l
 // Port selection: CLI argument takes first priority, then .env, then default 3000
 const PORT = parseInt(cliPort || process.env.PORT || "3000", 10);
 const USE_HTTPS = PORT === 443 || process.env.HTTPS === 'true';
+
+// Optional custom camouflage URL (can be any website URL or empty)
+const TARGET_URL = process.env.TARGET_URL || process.env.CUSTOM_URL || "";
 // =========================================================================
 
 // Ensure directories exist
@@ -58,6 +61,65 @@ app.use(express.json());
 
 // Serve uploads statically
 app.use('/uploads', express.static(uploadsDir));
+
+// Reverse proxy endpoint to allow embedding ANY external website inside an iframe without X-Frame-Options or CSP blocks
+app.get('/proxy', async (req, res) => {
+  const target = req.query.url || TARGET_URL;
+  if (!target) return res.status(400).send('Missing target URL');
+
+  try {
+    const upstreamRes = await fetch(target, {
+      headers: {
+        'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': req.headers['accept'] || '*/*'
+      }
+    });
+
+    const contentType = upstreamRes.headers.get('content-type') || 'text/html';
+    res.status(upstreamRes.status);
+    res.setHeader('Content-Type', contentType);
+
+    // If HTML, inject <base href="..."> so all relative assets (images, fonts, scripts) load from the origin site
+    if (contentType.includes('text/html')) {
+      let html = await upstreamRes.text();
+      try {
+        const parsedUrl = new URL(target);
+        const baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname.substring(0, parsedUrl.pathname.lastIndexOf('/') + 1)}`;
+        const baseTag = `\n  <base href="${baseUrl}">\n`;
+        if (/<head[^>]*>/i.test(html)) {
+          html = html.replace(/(<head[^>]*>)/i, `$1${baseTag}`);
+        } else {
+          html = baseTag + html;
+        }
+      } catch (e) {
+        // Fallback without base tag
+      }
+      return res.send(html);
+    }
+
+    const bodyBuffer = Buffer.from(await upstreamRes.arrayBuffer());
+    return res.send(bodyBuffer);
+  } catch (err) {
+    console.error('[Proxy Error]:', err.message);
+    return res.status(502).send('Proxy error: ' + err.message);
+  }
+});
+
+// Helper to serve the stealth shell (Iframe over Iframe container)
+function serveShell(res, customUrl) {
+  let shellHtml = fs.readFileSync(path.join(publicDir, 'shell.html'), 'utf-8');
+  if (customUrl) {
+    shellHtml = shellHtml.replace('window.CUSTOM_TARGET_URL ||', `window.CUSTOM_TARGET_URL || "${customUrl}" ||`);
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  return res.send(shellHtml);
+}
+
+// Dedicated route for the stealth shell
+app.get('/shell', (req, res) => {
+  serveShell(res, req.query.url || TARGET_URL);
+});
 
 // Serve stealth.js directly with no-cache headers so updates apply immediately
 app.get('/stealth.js', (req, res) => {
@@ -100,7 +162,15 @@ function serveInterface(res) {
 }
 
 // Serve root and index pages before static file handlers
-app.get(['/', '/index.html', '/index.php'], (req, res) => {
+app.get(['/', '/index.php'], (req, res) => {
+  // If a custom URL is provided via ?url=, or TARGET_URL is configured in .env, or IFRAME_MODE=true:
+  if (req.query.url || TARGET_URL || process.env.IFRAME_MODE === 'true') {
+    return serveShell(res, req.query.url || TARGET_URL);
+  }
+  serveInterface(res);
+});
+
+app.get('/index.html', (req, res) => {
   serveInterface(res);
 });
 
