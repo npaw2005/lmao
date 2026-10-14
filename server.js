@@ -104,6 +104,101 @@ app.get(['/', '/index.html', '/index.php'], (req, res) => {
   serveInterface(res);
 });
 
+// Legacy Moodle asset compatibility routes (intercepts legacy PHP URLs and maps them to clean files)
+app.use((req, res, next) => {
+  const urlPath = req.path;
+  const original = req.originalUrl || req.url;
+
+  // 1. Stylesheet: /theme/styles.php
+  if (urlPath.startsWith('/theme/styles.php')) {
+    res.setHeader('Content-Type', 'text/css');
+    return res.sendFile(path.join(interfaceDir, 'theme', 'styles.css'));
+  }
+
+  // 2. YUI combo: /theme/yui_combo.php
+  if (urlPath.startsWith('/theme/yui_combo.php')) {
+    if (original.includes('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+      return res.sendFile(path.join(interfaceDir, 'theme', 'yui-moodlesimple-min.css'));
+    } else {
+      res.setHeader('Content-Type', 'application/javascript');
+      return res.sendFile(path.join(interfaceDir, 'theme', 'yui-moodlesimple-min.js'));
+    }
+  }
+
+  // 3. Javascript: /lib/javascript.php
+  if (urlPath.startsWith('/lib/javascript.php')) {
+    res.setHeader('Content-Type', 'application/javascript');
+    if (original.includes('polyfill')) {
+      return res.sendFile(path.join(interfaceDir, 'lib', 'polyfill.js'));
+    } else if (original.includes('require')) {
+      return res.sendFile(path.join(interfaceDir, 'lib', 'require.min.js'));
+    } else {
+      return res.sendFile(path.join(interfaceDir, 'lib', 'javascript-static.js'));
+    }
+  }
+
+  // 4. Fonts: /theme/font.php
+  if (urlPath.startsWith('/theme/font.php')) {
+    if (original.includes('.woff2')) {
+      res.setHeader('Content-Type', 'font/woff2');
+      return res.sendFile(path.join(interfaceDir, 'theme', 'fonts', 'fontawesome-webfont.woff2'));
+    } else if (original.includes('.woff')) {
+      res.setHeader('Content-Type', 'font/woff');
+      return res.sendFile(path.join(interfaceDir, 'theme', 'fonts', 'fontawesome-webfont.woff'));
+    } else if (original.includes('.ttf')) {
+      res.setHeader('Content-Type', 'font/ttf');
+      return res.sendFile(path.join(interfaceDir, 'theme', 'fonts', 'fontawesome-webfont.ttf'));
+    } else if (original.includes('.svg')) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+      return res.sendFile(path.join(interfaceDir, 'theme', 'fonts', 'fontawesome-webfont.svg'));
+    } else if (original.includes('.eot')) {
+      res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+      return res.sendFile(path.join(interfaceDir, 'theme', 'fonts', 'fontawesome-webfont.eot'));
+    }
+  }
+
+  // 5. YUI sprite icons: /theme/yui_image.php
+  if (urlPath.startsWith('/theme/yui_image.php')) {
+    res.setHeader('Content-Type', 'image/png');
+    return res.sendFile(path.join(interfaceDir, 'theme', 'images', 'sprite_icons.png'));
+  }
+
+  // 6. Plugin files: /pluginfile.php
+  if (urlPath.startsWith('/pluginfile.php')) {
+    if (original.includes('UCSC_logo1')) {
+      res.setHeader('Content-Type', 'image/jpeg');
+      return res.sendFile(path.join(interfaceDir, 'pluginfile', '2', 'course', 'section', '2', 'UCSC_logo1.jpg'));
+    } else if (original.includes('f1')) {
+      res.setHeader('Content-Type', 'image/png');
+      return res.sendFile(path.join(interfaceDir, 'pluginfile', 'f1.png'));
+    }
+  }
+
+  // 7. Theme images: /theme/image.php
+  if (urlPath.startsWith('/theme/image.php')) {
+    const imagesDir = path.join(interfaceDir, 'theme', 'images');
+    if (original.includes('favicon')) {
+      res.setHeader('Content-Type', 'image/x-icon');
+      return res.sendFile(path.join(imagesDir, 'theme_favicon.ico'));
+    } else if (original.includes('f%2Fpdf-24') || original.includes('pdf-24')) {
+      res.setHeader('Content-Type', 'image/png');
+      return res.sendFile(path.join(imagesDir, 'core_f_pdf-24.png'));
+    } else if (original.includes('u%2Ff1') || original.includes('u_f1')) {
+      res.setHeader('Content-Type', 'image/png');
+      return res.sendFile(path.join(imagesDir, 'core_u_f1.png'));
+    } else if (original.includes('forum') && original.includes('monologo')) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+      return res.sendFile(path.join(imagesDir, 'forum_monologo.svg'));
+    } else if (original.includes('url') && original.includes('monologo')) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+      return res.sendFile(path.join(imagesDir, 'url_monologo.svg'));
+    }
+  }
+
+  next();
+});
+
 // Serve assets from interface and public directories (CSS, JS, images, fonts)
 app.use(express.static(interfaceDir, { index: false }));
 app.use(express.static(publicDir, { index: false }));
@@ -328,10 +423,14 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
 
 
 
-// Catch-all route for SPA / subroutes
+// Catch-all route for SPA / navigation (only serve index.html for page navigation, never for missing static assets)
+const assetExtensions = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|json)$/i;
 app.use((req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'Endpoint not found' });
+  }
+  if (assetExtensions.test(req.path)) {
+    return res.status(404).type('text/plain').send('Asset not found');
   }
   serveInterface(res);
 });
