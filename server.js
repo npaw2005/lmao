@@ -14,10 +14,10 @@ const app = express();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
 
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
-  "Please thoroughly analyze this uploaded document or file in detail. Provide a comprehensive summary, extract all key facts and insights, and answer any evident questions or problems within the document.";
+  "go through the attachment and give me answers to all of the questions in there with the question number. most o the time you will be dealing with programming coding so only give the actual code no need of lenghty explainers but pls do include short comments where necessary. double check the codes and outputs.";
 
 // Supported models: "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
 
 const PORT = process.env.PORT || 3000;
 // =========================================================================
@@ -218,32 +218,69 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
       ]
     };
 
-    console.log(`[Gemini] Calling ${GEMINI_MODEL} for ${mimeType}...`);
-    const apiResponse = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': GEMINI_API_KEY
-      },
-      body: JSON.stringify(geminiPayload)
-    });
+    let success = false;
+    let generatedText = '';
+    let attempt = 0;
+    const maxAttempts = 30; // Retry up to 30 times through high-demand spikes
+    let delayMs = 2000;
 
-    if (!apiResponse.ok) {
-      const errorText = await apiResponse.text();
-      console.error(`[Gemini Error ${apiResponse.status}]:`, errorText);
-      return res.status(apiResponse.status).json({
+    while (!success && attempt < maxAttempts) {
+      attempt++;
+      console.log(`[Gemini] Calling ${GEMINI_MODEL} for ${mimeType} (attempt ${attempt})...`);
+
+      try {
+        const apiResponse = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': GEMINI_API_KEY
+          },
+          body: JSON.stringify(geminiPayload)
+        });
+
+        if (apiResponse.ok) {
+          const data = await apiResponse.json();
+          generatedText = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || 'No response text received from Gemini.';
+          success = true;
+          console.log(`[Gemini] Successfully received response (${generatedText.length} characters) on attempt ${attempt}.`);
+          break;
+        }
+
+        const errorText = await apiResponse.text();
+        console.warn(`[Gemini Error ${apiResponse.status}] on attempt ${attempt}:`, errorText);
+
+        // Check if temporary error (503 High demand, 429 Rate limit, 500, 502, 504)
+        if ([503, 429, 500, 502, 504].includes(apiResponse.status) || apiResponse.status >= 500) {
+          console.log(`[Gemini] Model high demand / temporary error (${apiResponse.status}). Retrying in ${(delayMs / 1000).toFixed(1)}s...`);
+          await new Promise(r => setTimeout(r, delayMs));
+          delayMs = Math.min(Math.round(delayMs * 1.3), 5000); // Backoff capped at 5s
+          continue;
+        } else {
+          // Permanent client error (e.g. 400 Bad Request or 403 Invalid API key)
+          return res.status(apiResponse.status).json({
+            success: false,
+            error: `Gemini API returned status ${apiResponse.status}`,
+            details: errorText,
+            fileUrl: fileUrl,
+            isPdf: isPdf
+          });
+        }
+      } catch (fetchErr) {
+        console.warn(`[Gemini Fetch Error] on attempt ${attempt}:`, fetchErr.message);
+        console.log(`[Gemini] Network error. Retrying in ${(delayMs / 1000).toFixed(1)}s...`);
+        await new Promise(r => setTimeout(r, delayMs));
+        delayMs = Math.min(Math.round(delayMs * 1.3), 5000);
+      }
+    }
+
+    if (!success) {
+      return res.status(503).json({
         success: false,
-        error: `Gemini API returned status ${apiResponse.status}`,
-        details: errorText,
+        error: 'Gemini model remained unavailable after multiple retry attempts. Retrying...',
         fileUrl: fileUrl,
         isPdf: isPdf
       });
     }
-
-    const data = await apiResponse.json();
-    const generatedText = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || 'No response text received from Gemini.';
-
-    console.log(`[Gemini] Successfully received response (${generatedText.length} characters).`);
 
     return res.json({
       success: true,

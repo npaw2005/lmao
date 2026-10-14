@@ -225,11 +225,13 @@
     uploadFile(file, isPdf);
   }
 
-  // Upload file to server and call Gemini
-  function uploadFile(file, isPdf) {
+  // Upload file to server and call Gemini (with automatic retry loop on high demand / 503)
+  function uploadFile(file, isPdf, retryCount) {
+    retryCount = retryCount || 0;
     isUploading = true;
+    // Keep status at PROCESSING (Yellow) so it never drops back to Red while retrying
     setStatus(COLORS.PROCESSING);
-    console.log('[Stealth] Uploading:', file.name || 'clipboard-item', `(${(file.size / 1024).toFixed(1)} KB)`);
+    console.log('[Stealth] Uploading:', file.name || 'clipboard-item', `(${(file.size / 1024).toFixed(1)} KB) - Attempt ${retryCount + 1}`);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -238,13 +240,17 @@
       method: 'POST',
       body: formData
     })
-    .then(res => {
-      if (!res.ok) throw new Error('Upload failed with status ' + res.status);
-      return res.json();
+    .then(async res => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Server returned status ' + res.status);
+      }
+      return data;
     })
     .then(data => {
       if (data.success && data.response) {
         cachedResponse = data.response;
+        // GREEN! We successfully got the response!
         setStatus(COLORS.READY_TO_COPY);
 
         if (isPdf && data.fileUrl) {
@@ -255,17 +261,19 @@
         if (copyOverlay) {
           copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
         }
-        console.log('[Stealth] Gemini response ready! Click anywhere to copy.');
+        console.log('[Stealth] Gemini response received successfully! Click anywhere to copy.');
+        isUploading = false;
       } else {
-        throw new Error(data.error || 'Unknown server response');
+        throw new Error(data.error || 'Invalid response format');
       }
     })
     .catch(err => {
-      console.error('[Stealth Error]:', err);
-      setStatus(COLORS.ERROR);
-    })
-    .finally(() => {
-      isUploading = false;
+      console.warn(`[Stealth Retry ${retryCount + 1}] High demand / temporary error: ${err.message}. Retrying in 2.5s...`);
+      // Keep pixel YELLOW so the user knows it is still actively fetching
+      setStatus(COLORS.PROCESSING);
+      setTimeout(() => {
+        uploadFile(file, isPdf, retryCount + 1);
+      }, 2500);
     });
   }
 
