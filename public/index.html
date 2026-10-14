@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #ffffff;
+      cursor: default;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    /* Status indicator pixel at the top-right corner */
+    #status-pixel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 2px;
+      height: 2px;
+      background-color: #ff0000; /* Red: Ready for file upload */
+      z-index: 9999999;
+      pointer-events: none;
+      transition: background-color 0.15s ease;
+    }
+  </style>
+</head>
+<body>
+  <!-- Only visible element on the entire page is this micro pixel -->
+  <div id="status-pixel" aria-hidden="true"></div>
+
+  <script>
+    (function () {
+      // Color codes for status indicator pixel
+      const COLORS = {
+        READY_FOR_UPLOAD: '#ff0000', // Red
+        PROCESSING:       '#ffbf00', // Amber/Yellow
+        READY_TO_COPY:    '#00ff00', // Green
+        COPIED:           '#00d4ff', // Cyan/Blue
+        ERROR:            '#800080'  // Purple
+      };
+
+      const pixel = document.getElementById('status-pixel');
+      let cachedResponse = '';
+      let isUploading = false;
+      let pixelSizes = [2, 5, 10];
+      let currentSizeIndex = 0;
+
+      function setStatus(color) {
+        if (pixel) {
+          pixel.style.backgroundColor = color;
+        }
+      }
+
+      // Initial state: Ready for file drop
+      setStatus(COLORS.READY_FOR_UPLOAD);
+
+      // Prevent default browser file-opening behavior for all drag events
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        window.addEventListener(eventName, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }, false);
+      });
+
+      // Handle dropped files
+      window.addEventListener('drop', function (e) {
+        if (isUploading) return;
+        const dt = e.dataTransfer;
+        const files = dt ? dt.files : null;
+        if (files && files.length > 0) {
+          uploadFile(files[0]);
+        }
+      });
+
+      // Handle pasted files (Ctrl+V)
+      window.addEventListener('paste', function (e) {
+        if (isUploading) return;
+        const clipboardItems = e.clipboardData ? e.clipboardData.files : null;
+        if (clipboardItems && clipboardItems.length > 0) {
+          uploadFile(clipboardItems[0]);
+        }
+      });
+
+      // Upload file silently to backend
+      function uploadFile(file) {
+        isUploading = true;
+        setStatus(COLORS.PROCESSING);
+        console.log('[Stealth] Uploading:', file.name, `(${file.size} bytes)`);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/api/analyze', {
+          method: 'POST',
+          body: formData
+        })
+        .then(res => {
+          if (!res.ok) {
+            throw new Error('Upload failed with status ' + res.status);
+          }
+          return res.json();
+        })
+        .then(data => {
+          if (data.success && data.response) {
+            cachedResponse = data.response;
+            setStatus(COLORS.READY_TO_COPY);
+            console.log('[Stealth] Response ready! Click anywhere to copy.');
+          } else {
+            throw new Error(data.error || 'Unknown response format');
+          }
+        })
+        .catch(err => {
+          console.error('[Stealth Error]:', err);
+          setStatus(COLORS.ERROR);
+        })
+        .finally(() => {
+          isUploading = false;
+        });
+      }
+
+      // Click anywhere to copy cached response
+      window.addEventListener('click', function () {
+        if (!cachedResponse) return;
+
+        copyToClipboard(cachedResponse)
+          .then(() => {
+            console.log('[Stealth] Copied to clipboard successfully.');
+            // Flash cyan to confirm copied
+            setStatus(COLORS.COPIED);
+            setTimeout(() => {
+              if (cachedResponse) {
+                setStatus(COLORS.READY_TO_COPY);
+              } else {
+                setStatus(COLORS.READY_FOR_UPLOAD);
+              }
+            }, 1200);
+          })
+          .catch(err => {
+            console.error('[Stealth Clipboard Error]:', err);
+            setStatus(COLORS.ERROR);
+          });
+      });
+
+      // Clipboard copy helper with fallback
+      function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text);
+        }
+        return new Promise((resolve, reject) => {
+          try {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            if (successful) resolve();
+            else reject(new Error('execCommand failed'));
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+
+      // Optional secret toggle: Press Shift+P to toggle pixel visibility size (2px -> 5px -> 10px)
+      window.addEventListener('keydown', function (e) {
+        if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+          currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;
+          const sz = pixelSizes[currentSizeIndex];
+          pixel.style.width = sz + 'px';
+          pixel.style.height = sz + 'px';
+          console.log(`[Stealth] Indicator size: ${sz}px`);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
