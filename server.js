@@ -18,10 +18,11 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
   "TASK: go through the attachment and give me answers to all of the questions in there with the question number. IMPORTANT INSTRUCTIONS: most oF the time you will be dealing with programming coding so only give the actual code no need of lenghty explainers but pls do include short comments where necessary. NEVER give incomplete or partial codes for any question and you must provide the fully complete code. do not omit repeating code parts thinking they are trvial such as int main, include, etc. always give the comlete code for each and every question. as a whole program. always double check the codes that are complex and long.";
 
-// Parse CLI arguments flexibly (supports positional args or flags: --port, -p, --model, -m)
+// Parse CLI arguments flexibly (supports positional args or flags: --port, -p, --model, -m, --url, -u, --target, -t)
 const args = process.argv.slice(2);
 let cliPort = null;
 let cliModel = null;
+let cliUrl = null;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -29,8 +30,12 @@ for (let i = 0; i < args.length; i++) {
     cliPort = args[++i];
   } else if (arg === '--model' || arg === '-m') {
     cliModel = args[++i];
+  } else if (arg === '--url' || arg === '-u' || arg === '--target' || arg === '-t') {
+    cliUrl = args[++i];
   } else if (!isNaN(arg) && !cliPort) {
     cliPort = arg;
+  } else if ((arg.startsWith('http://') || arg.startsWith('https://')) && !cliUrl) {
+    cliUrl = arg;
   } else if (isNaN(arg) && !cliModel && !arg.startsWith('-')) {
     cliModel = arg;
   }
@@ -43,8 +48,8 @@ const GEMINI_MODEL = cliModel || process.env.GEMINI_MODEL || "gemini-3.5-flash-l
 const PORT = parseInt(cliPort || process.env.PORT || "3000", 10);
 const USE_HTTPS = PORT === 443 || process.env.HTTPS === 'true';
 
-// Optional custom camouflage URL (can be any website URL or empty)
-const TARGET_URL = process.env.TARGET_URL || process.env.CUSTOM_URL || "";
+// Optional custom camouflage URL: CLI argument takes first priority, then .env, then empty
+const TARGET_URL = cliUrl || process.env.TARGET_URL || process.env.CUSTOM_URL || "";
 // =========================================================================
 
 // Ensure directories exist
@@ -614,6 +619,12 @@ serverInstance.listen(PORT, () => {
     console.log(` -> https://niduka.southeastasia.cloudapp.azure.com`);
   }
   console.log(` Protocol:            ${protocol.toUpperCase()} (Port: ${PORT})`);
+  console.log(` AI Model:            ${GEMINI_MODEL}`);
+  if (TARGET_URL) {
+    console.log(` Camouflage URL:      ${TARGET_URL} (Iframe Shell active)`);
+  } else {
+    console.log(` Camouflage:          Local Moodle interface (/interface)`);
+  }
   console.log(` Interface directory: ${interfaceDir}`);
   console.log(` Uploads directory:   ${uploadsDir}`);
   if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
