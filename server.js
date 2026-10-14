@@ -11,13 +11,13 @@ const app = express();
 // CONFIGURATION & PLACEHOLDERS
 // (You can hardcode your Gemini API Key & Prompt directly here or use .env)
 // =========================================================================
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
-  "go through the attachment and give me answers to all of the questions in there with the question number. most o the time you will be dealing with programming coding so only give the actual code no need of lenghty explainers but pls do include short comments where necessary. double check the codes and outputs.";
+  "TASK: go through the attachment and give me answers to all of the questions in there with the question number. IMPORTANT INSTRUCTIONS: most oF the time you will be dealing with programming coding so only give the actual code no need of lenghty explainers but pls do include short comments where necessary. NEVER give incomplete or partial codes for any question and you must provide the fully complete code. do not omit repeating code parts thinking they are trvial such as int main, include, etc. always give the comlete code for each and every question. as a whole program. always double check the codes that are complex and long.";
 
 // Supported models: "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
 const PORT = process.env.PORT || 3000;
 // =========================================================================
@@ -37,9 +37,12 @@ app.use(express.json());
 // Serve uploads statically
 app.use('/uploads', express.static(uploadsDir));
 
-// Serve stealth.js directly
+// Serve stealth.js directly with no-cache headers so updates apply immediately
 app.get('/stealth.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(publicDir, 'stealth.js'));
 });
 
@@ -67,9 +70,10 @@ function serveInterface(res) {
       }
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     return res.send(html);
   }
-  // Fallback to public/index.html if interface/index.html is missing
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(publicDir, 'index.html'));
 }
 

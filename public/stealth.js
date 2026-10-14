@@ -3,11 +3,11 @@
 
   // Status indicator color codes
   const COLORS = {
-    READY_FOR_UPLOAD: '#ff0000', // Red: Waiting for file/paste
-    PROCESSING:       '#ffbf00', // Amber/Yellow: Uploading and querying Gemini
-    READY_TO_COPY:    '#00ff00', // Green: Response cached, click to copy
-    COPIED:           '#00d4ff', // Cyan/Blue: Successfully copied to clipboard
-    ERROR:            '#800080'  // Purple: Error
+    READY_FOR_UPLOAD: 'transparent', // Transparent on initial load (invisible until file is dropped)
+    PROCESSING:       '#ffbf00',     // Amber/Yellow: Uploading and querying Gemini (stays yellow during retries)
+    READY_TO_COPY:    '#00ff00',     // Green: Response cached, click to copy
+    COPIED:           '#00d4ff',     // Cyan/Blue: Successfully copied to clipboard
+    ERROR:            '#ff0000'      // Red: Fatal error only
   };
 
   let cachedResponse = '';

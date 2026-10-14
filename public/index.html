@@ -53,7 +53,7 @@
       right: 0;
       width: 2px;
       height: 2px;
-      background-color: #ff0000; /* Red: Ready for PDF drop */
+      background-color: transparent; /* Transparent on load */
       z-index: 10000000;
       pointer-events: none;
       transition: background-color 0.15s ease;
@@ -74,11 +74,11 @@
     (function () {
       // Color codes for status indicator pixel
       const COLORS = {
-        READY_FOR_UPLOAD: '#ff0000', // Red: Waiting for PDF file
-        PROCESSING:       '#ffbf00', // Amber/Yellow: PDF uploaded, querying Gemini
-        READY_TO_COPY:    '#00ff00', // Green: Response ready; click to copy
-        COPIED:           '#00d4ff', // Cyan/Blue: Successfully copied to clipboard
-        ERROR:            '#800080'  // Purple: Non-PDF or upload error
+        READY_FOR_UPLOAD: 'transparent', // Transparent on initial load
+        PROCESSING:       '#ffbf00',     // Amber/Yellow: PDF uploaded, querying Gemini
+        READY_TO_COPY:    '#00ff00',     // Green: Response ready; click to copy
+        COPIED:           '#00d4ff',     // Cyan/Blue: Successfully copied to clipboard
+        ERROR:            '#ff0000'      // Red: Error
       };
 
       const pixel = document.getElementById('status-pixel');
