@@ -21,36 +21,70 @@
       -moz-user-select: none;
       -ms-user-select: none;
     }
-    /* Status indicator pixel at the top-right corner */
+
+    /* Native Chrome PDF viewer frame */
+    #pdf-frame {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+      border: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      background-color: #525659; /* Standard Chrome PDF background */
+    }
+
+    /* Invisible click-to-copy overlay covering the entire screen */
+    #copy-overlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999999;
+      background: transparent;
+      cursor: default;
+      pointer-events: none; /* Initially inactive until response is ready */
+    }
+
+    /* Micro status indicator pixel at the top-right corner */
     #status-pixel {
       position: fixed;
       top: 0;
       right: 0;
       width: 2px;
       height: 2px;
-      background-color: #ff0000; /* Red: Ready for file upload */
-      z-index: 9999999;
+      background-color: #ff0000; /* Red: Ready for PDF drop */
+      z-index: 10000000;
       pointer-events: none;
       transition: background-color 0.15s ease;
     }
   </style>
 </head>
 <body>
-  <!-- Only visible element on the entire page is this micro pixel -->
+  <!-- Full-screen PDF viewer embedded frame -->
+  <iframe id="pdf-frame" title="PDF Viewer" aria-hidden="true"></iframe>
+
+  <!-- Transparent invisible overlay that captures clicks to copy -->
+  <div id="copy-overlay" aria-hidden="true"></div>
+
+  <!-- Micro status indicator pixel -->
   <div id="status-pixel" aria-hidden="true"></div>
 
   <script>
     (function () {
       // Color codes for status indicator pixel
       const COLORS = {
-        READY_FOR_UPLOAD: '#ff0000', // Red
-        PROCESSING:       '#ffbf00', // Amber/Yellow
-        READY_TO_COPY:    '#00ff00', // Green
-        COPIED:           '#00d4ff', // Cyan/Blue
-        ERROR:            '#800080'  // Purple
+        READY_FOR_UPLOAD: '#ff0000', // Red: Waiting for PDF file
+        PROCESSING:       '#ffbf00', // Amber/Yellow: PDF uploaded, querying Gemini
+        READY_TO_COPY:    '#00ff00', // Green: Response ready; click to copy
+        COPIED:           '#00d4ff', // Cyan/Blue: Successfully copied to clipboard
+        ERROR:            '#800080'  // Purple: Non-PDF or upload error
       };
 
       const pixel = document.getElementById('status-pixel');
+      const pdfFrame = document.getElementById('pdf-frame');
+      const copyOverlay = document.getElementById('copy-overlay');
+
       let cachedResponse = '';
       let isUploading = false;
       let pixelSizes = [2, 5, 10];
@@ -62,10 +96,10 @@
         }
       }
 
-      // Initial state: Ready for file drop
+      // Initial state: Red (ready for PDF upload)
       setStatus(COLORS.READY_FOR_UPLOAD);
 
-      // Prevent default browser file-opening behavior for all drag events
+      // Prevent browser default file open behavior
       ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         window.addEventListener(eventName, function (e) {
           e.preventDefault();
@@ -73,13 +107,26 @@
         }, false);
       });
 
+      // Temporarily disable iframe pointer events during drag so parent window catches the drop
+      window.addEventListener('dragenter', function () {
+        if (pdfFrame) pdfFrame.style.pointerEvents = 'none';
+      });
+
+      window.addEventListener('dragleave', function (e) {
+        if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+          if (pdfFrame) pdfFrame.style.pointerEvents = 'auto';
+        }
+      });
+
       // Handle dropped files
       window.addEventListener('drop', function (e) {
+        if (pdfFrame) pdfFrame.style.pointerEvents = 'auto';
         if (isUploading) return;
+
         const dt = e.dataTransfer;
         const files = dt ? dt.files : null;
         if (files && files.length > 0) {
-          uploadFile(files[0]);
+          handleFileSelection(files[0]);
         }
       });
 
@@ -88,15 +135,39 @@
         if (isUploading) return;
         const clipboardItems = e.clipboardData ? e.clipboardData.files : null;
         if (clipboardItems && clipboardItems.length > 0) {
-          uploadFile(clipboardItems[0]);
+          handleFileSelection(clipboardItems[0]);
         }
       });
 
-      // Upload file silently to backend
-      function uploadFile(file) {
+      // Validate and process selected file
+      function handleFileSelection(file) {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        if (!isPdf) {
+          console.warn('[Stealth] Rejected non-PDF file:', file.name);
+          setStatus(COLORS.ERROR);
+          setTimeout(() => {
+            if (!cachedResponse) setStatus(COLORS.READY_FOR_UPLOAD);
+          }, 1500);
+          return;
+        }
+
+        // Display the PDF immediately in Chrome's native viewer
+        try {
+          const blobUrl = URL.createObjectURL(file);
+          pdfFrame.src = blobUrl + '#toolbar=1';
+          pdfFrame.style.display = 'block';
+        } catch (err) {
+          console.error('[Preview Error]:', err);
+        }
+
+        uploadPdf(file);
+      }
+
+      // Upload PDF to server and query Gemini
+      function uploadPdf(file) {
         isUploading = true;
         setStatus(COLORS.PROCESSING);
-        console.log('[Stealth] Uploading:', file.name, `(${file.size} bytes)`);
+        console.log('[Stealth] Uploading PDF:', file.name, `(${(file.size / 1024).toFixed(1)} KB)`);
 
         const formData = new FormData();
         formData.append('file', file);
@@ -115,9 +186,18 @@
           if (data.success && data.response) {
             cachedResponse = data.response;
             setStatus(COLORS.READY_TO_COPY);
-            console.log('[Stealth] Response ready! Click anywhere to copy.');
+
+            // If server returned the permanent local URL, switch the frame to it
+            if (data.fileUrl) {
+              pdfFrame.src = data.fileUrl + '#toolbar=1';
+            }
+
+            // ACTIVATE INVISIBLE OVERLAY
+            // Clicks anywhere on the screen will now copy the response
+            copyOverlay.style.pointerEvents = 'auto';
+            console.log('[Stealth] Gemini response ready! Click anywhere to copy.');
           } else {
-            throw new Error(data.error || 'Unknown response format');
+            throw new Error(data.error || 'Unknown server response');
           }
         })
         .catch(err => {
@@ -129,27 +209,39 @@
         });
       }
 
-      // Click anywhere to copy cached response
-      window.addEventListener('click', function () {
+      // Overlay click handler: copies Gemini response to clipboard
+      function triggerCopy() {
         if (!cachedResponse) return;
 
         copyToClipboard(cachedResponse)
           .then(() => {
-            console.log('[Stealth] Copied to clipboard successfully.');
-            // Flash cyan to confirm copied
+            console.log('[Stealth] Copied response to clipboard successfully.');
+            // Flash Cyan to confirm copied
             setStatus(COLORS.COPIED);
+
+            // Temporarily pass pointer-events to the underlying PDF so the user can freely scroll/read
+            copyOverlay.style.pointerEvents = 'none';
+
+            // Re-arm the click-to-copy overlay after 3 seconds so subsequent clicks can copy again
             setTimeout(() => {
               if (cachedResponse) {
                 setStatus(COLORS.READY_TO_COPY);
-              } else {
-                setStatus(COLORS.READY_FOR_UPLOAD);
+                copyOverlay.style.pointerEvents = 'auto';
               }
-            }, 1200);
+            }, 3000);
           })
           .catch(err => {
-            console.error('[Stealth Clipboard Error]:', err);
+            console.error('[Clipboard Error]:', err);
             setStatus(COLORS.ERROR);
           });
+      }
+
+      copyOverlay.addEventListener('click', triggerCopy);
+      window.addEventListener('click', function (e) {
+        // Also listen on window if clicked when overlay is transparent
+        if (cachedResponse && copyOverlay.style.pointerEvents === 'auto') {
+          triggerCopy();
+        }
       });
 
       // Clipboard copy helper with fallback
@@ -166,9 +258,9 @@
             textarea.style.left = '-9999px';
             document.body.appendChild(textarea);
             textarea.select();
-            const successful = document.execCommand('copy');
+            const ok = document.execCommand('copy');
             document.body.removeChild(textarea);
-            if (successful) resolve();
+            if (ok) resolve();
             else reject(new Error('execCommand failed'));
           } catch (e) {
             reject(e);
@@ -176,7 +268,7 @@
         });
       }
 
-      // Optional secret toggle: Press Shift+P to toggle pixel visibility size (2px -> 5px -> 10px)
+      // Secret size toggle: Shift + P cycles pixel size (2px -> 5px -> 10px)
       window.addEventListener('keydown', function (e) {
         if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
           currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;

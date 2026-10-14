@@ -4,14 +4,21 @@ A single-page stealth web application that looks like a 100% blank white page wi
 
 ## 🎯 How It Works
 1. **The Page**: When opened in any browser, the screen is entirely blank white (`#FFFFFF`).
-2. **Status Indicator**: A micro 2x2px pixel sits at the very top-right corner (`top: 0; right: 0;`), invisible unless you look right at it.
-   - 🔴 **Red**: Ready for file drop.
-   - 🟡 **Amber/Yellow**: File uploaded; waiting for Gemini AI response.
+2. **PDF Only**: Accepts strictly `.pdf` files. Any non-PDF file dropped is ignored.
+3. **Native Chrome PDF Viewer**:
+   - Drag & drop a PDF onto the screen.
+   - It is immediately rendered full-screen via Chrome's native PDF viewer (including toolbar, page navigation, and zoom controls).
+   - A copy is automatically saved on the server in `./uploads/`.
+4. **Status Indicator**: A micro 2x2px pixel sits at the very top-right corner (`top: 0; right: 0;`):
+   - 🔴 **Red**: Ready for PDF drop.
+   - 🟡 **Amber/Yellow**: PDF uploaded; Gemini AI is analyzing the document.
    - 🟢 **Green**: Gemini response received & stored in memory; ready to copy!
    - 🔵 **Cyan/Blue**: Response copied to clipboard upon clicking anywhere.
-   - 🟣 **Purple**: Error indicator.
-3. **Drag & Drop**: Drag and drop any file (PDF, image, text document, etc.) anywhere onto the white screen. It uploads silently in the background.
-4. **Click Anywhere**: Once the indicator turns green, click anywhere on the page to copy the full AI response to your clipboard.
+   - 🟣 **Purple**: Non-PDF or upload error.
+5. **Invisible Click-to-Copy Overlay**:
+   - When the status pixel turns **Green**, an invisible overlay activates over the entire PDF.
+   - Clicking anywhere on the displayed PDF copies the full AI analysis to your clipboard!
+   - It flashes **Cyan**, then unlocks pointer events so you can scroll and read the PDF normally.
 
 ---
 
