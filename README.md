@@ -53,19 +53,25 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 npm start
 ```
 
-**Custom Port (e.g. 8080):**
+**Custom Port and/or Custom Model:**
 ```bash
-node server.js 8080
-# or in .env: PORT=8080
+# Pass custom port and model as positional arguments:
+node server.js 8080 gemini-2.5-flash
+
+# Or pass custom model on port 3000:
+node server.js gemini-flash-latest
+
+# Or using explicit flags:
+node server.js --port 8080 --model gemini-3.5-flash-lite
 ```
 
 **HTTPS on Port 443 with Apache SSL Certs:**
 ```bash
 # On Windows (Run as Administrator):
-node server.js 443
+node server.js 443 gemini-3.5-flash-lite
 
 # On Linux/WSL (Run with sudo for ports < 1024):
-sudo PORT=443 node server.js
+sudo node server.js 443 gemini-3.5-flash-lite
 ```
 The server will automatically discover your Apache SSL certificates from:
 `C:\Users\niduka\AppData\Roaming\Apache24\conf\ssl` (or `/mnt/c/Users/...`, or `./ssl/`).

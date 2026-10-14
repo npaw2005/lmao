@@ -18,11 +18,29 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
   "TASK: go through the attachment and give me answers to all of the questions in there with the question number. IMPORTANT INSTRUCTIONS: most oF the time you will be dealing with programming coding so only give the actual code no need of lenghty explainers but pls do include short comments where necessary. NEVER give incomplete or partial codes for any question and you must provide the fully complete code. do not omit repeating code parts thinking they are trvial such as int main, include, etc. always give the comlete code for each and every question. as a whole program. always double check the codes that are complex and long.";
 
-// Supported models: "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+// Parse CLI arguments flexibly (supports positional args or flags: --port, -p, --model, -m)
+const args = process.argv.slice(2);
+let cliPort = null;
+let cliModel = null;
 
-// Custom port support (CLI argument or .env)
-const PORT = parseInt(process.argv[2] || process.env.PORT || "3000", 10);
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === '--port' || arg === '-p') {
+    cliPort = args[++i];
+  } else if (arg === '--model' || arg === '-m') {
+    cliModel = args[++i];
+  } else if (!isNaN(arg) && !cliPort) {
+    cliPort = arg;
+  } else if (isNaN(arg) && !cliModel && !arg.startsWith('-')) {
+    cliModel = arg;
+  }
+}
+
+// Model selection: CLI argument takes first priority, then .env, then default
+const GEMINI_MODEL = cliModel || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+
+// Port selection: CLI argument takes first priority, then .env, then default 3000
+const PORT = parseInt(cliPort || process.env.PORT || "3000", 10);
 const USE_HTTPS = PORT === 443 || process.env.HTTPS === 'true';
 // =========================================================================
 
