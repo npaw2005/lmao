@@ -16,8 +16,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
   "Please thoroughly analyze this uploaded document or file in detail. Provide a comprehensive summary, extract all key facts and insights, and answer any evident questions or problems within the document.";
 
-// Supported models: "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// Supported models: "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 
 const PORT = process.env.PORT || 3000;
 // =========================================================================
@@ -222,7 +222,8 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
     const apiResponse = await fetch(geminiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-goog-api-key': GEMINI_API_KEY
       },
       body: JSON.stringify(geminiPayload)
     });
