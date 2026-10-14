@@ -1,4 +1,6 @@
 (function () {
+  'use strict';
+
   // Status indicator color codes
   const COLORS = {
     READY_FOR_UPLOAD: '#ff0000', // Red: Waiting for file/paste
@@ -10,72 +12,155 @@
 
   let cachedResponse = '';
   let isUploading = false;
+  let currentColor = COLORS.READY_FOR_UPLOAD;
   let pixelSizes = [2, 5, 10];
   let currentSizeIndex = 0;
 
-  // Ensure status pixel exists
-  let pixel = document.getElementById('status-pixel');
-  if (!pixel) {
-    pixel = document.createElement('div');
-    pixel.id = 'status-pixel';
-    pixel.style.cssText = 'position:fixed;top:0;right:0;width:2px;height:2px;z-index:2147483647;pointer-events:none;transition:background-color 0.15s ease;background-color:' + COLORS.READY_FOR_UPLOAD + ';';
-    document.body.appendChild(pixel);
-  }
+  // DOM Elements with inline styles using !important
+  let pixel = null;
+  let copyOverlay = null;
+  let pdfFrame = null;
 
-  // Ensure invisible copy overlay exists
-  let copyOverlay = document.getElementById('copy-overlay');
-  if (!copyOverlay) {
-    copyOverlay = document.createElement('div');
-    copyOverlay.id = 'copy-overlay';
-    copyOverlay.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483640;background:transparent;cursor:default;pointer-events:none;';
-    document.body.appendChild(copyOverlay);
-  }
+  function createElements() {
+    // 1. Status Pixel
+    if (!document.getElementById('status-pixel')) {
+      pixel = document.createElement('div');
+      pixel.id = 'status-pixel';
+      pixel.setAttribute('aria-hidden', 'true');
+      pixel.style.cssText = [
+        'position: fixed !important',
+        'top: 0px !important',
+        'right: 0px !important',
+        'width: ' + pixelSizes[currentSizeIndex] + 'px !important',
+        'height: ' + pixelSizes[currentSizeIndex] + 'px !important',
+        'background-color: ' + currentColor + ' !important',
+        'margin: 0px !important',
+        'padding: 0px !important',
+        'border: none !important',
+        'outline: none !important',
+        'box-shadow: none !important',
+        'transform: none !important',
+        'opacity: 1 !important',
+        'visibility: visible !important',
+        'z-index: 2147483647 !important',
+        'pointer-events: none !important',
+        'transition: background-color 0.15s ease !important'
+      ].join(';');
+    } else {
+      pixel = document.getElementById('status-pixel');
+    }
 
-  // Ensure full-screen PDF viewer iframe exists
-  let pdfFrame = document.getElementById('pdf-frame');
-  if (!pdfFrame) {
-    pdfFrame = document.createElement('iframe');
-    pdfFrame.id = 'pdf-frame';
-    pdfFrame.title = 'PDF Document Viewer';
-    pdfFrame.style.cssText = 'display:none;position:fixed;inset:0;width:100vw;height:100vh;border:none;z-index:2147483630;background-color:#525659;';
-    document.body.appendChild(pdfFrame);
-  }
+    // 2. Invisible Copy Overlay
+    if (!document.getElementById('copy-overlay')) {
+      copyOverlay = document.createElement('div');
+      copyOverlay.id = 'copy-overlay';
+      copyOverlay.setAttribute('aria-hidden', 'true');
+      copyOverlay.style.cssText = [
+        'position: fixed !important',
+        'top: 0px !important',
+        'left: 0px !important',
+        'right: 0px !important',
+        'bottom: 0px !important',
+        'width: 100vw !important',
+        'height: 100vh !important',
+        'margin: 0px !important',
+        'padding: 0px !important',
+        'border: none !important',
+        'background: transparent !important',
+        'cursor: default !important',
+        'z-index: 2147483646 !important',
+        'pointer-events: none !important'
+      ].join(';');
+    } else {
+      copyOverlay = document.getElementById('copy-overlay');
+    }
 
-  function setStatus(color) {
-    if (pixel) {
-      pixel.style.backgroundColor = color;
+    // 3. Full-screen PDF Frame
+    if (!document.getElementById('pdf-frame')) {
+      pdfFrame = document.createElement('iframe');
+      pdfFrame.id = 'pdf-frame';
+      pdfFrame.title = 'PDF Document Viewer';
+      pdfFrame.setAttribute('aria-hidden', 'true');
+      pdfFrame.style.cssText = [
+        'display: none',
+        'position: fixed !important',
+        'top: 0px !important',
+        'left: 0px !important',
+        'right: 0px !important',
+        'bottom: 0px !important',
+        'width: 100vw !important',
+        'height: 100vh !important',
+        'margin: 0px !important',
+        'padding: 0px !important',
+        'border: none !important',
+        'z-index: 2147483640 !important',
+        'background-color: #525659 !important'
+      ].join(';');
+    } else {
+      pdfFrame = document.getElementById('pdf-frame');
+    }
+
+    // Mount to document.documentElement or document.body
+    const targetRoot = document.body || document.documentElement;
+    if (targetRoot) {
+      if (!document.getElementById('status-pixel')) targetRoot.appendChild(pixel);
+      if (!document.getElementById('copy-overlay')) targetRoot.appendChild(copyOverlay);
+      if (!document.getElementById('pdf-frame')) targetRoot.appendChild(pdfFrame);
     }
   }
 
-  setStatus(COLORS.READY_FOR_UPLOAD);
+  // Ensure elements are created and mounted
+  createElements();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', createElements);
+  }
+  window.addEventListener('load', createElements);
 
-  // Prevent default drag behaviors across the entire window
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+  // Periodic safety check in case frameworks (React/Vue/Moodle) re-render body
+  setInterval(createElements, 1000);
+
+  function setStatus(color) {
+    currentColor = color;
+    if (pixel) {
+      pixel.style.setProperty('background-color', color, 'important');
+    }
+  }
+
+  // =========================================================================
+  // CAPTURE-PHASE EVENT LISTENERS
+  // (Using useCapture=true ensures our listeners run BEFORE any complex framework)
+  // =========================================================================
+
+  // Prevent browser's default file-opening navigation
+  ['dragenter', 'dragover', 'dragleave'].forEach(eventName => {
     window.addEventListener(eventName, function (e) {
       e.preventDefault();
       e.stopPropagation();
-    }, false);
+    }, true);
   });
 
-  // Temporarily disable iframe pointer events during drag so the drop is caught by window
+  // Temporarily disable iframe pointer events during drag so window catches drop
   window.addEventListener('dragenter', function () {
     if (pdfFrame && pdfFrame.style.display !== 'none') {
-      pdfFrame.style.pointerEvents = 'none';
+      pdfFrame.style.setProperty('pointer-events', 'none', 'important');
     }
-  });
+  }, true);
 
   window.addEventListener('dragleave', function (e) {
     if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
       if (pdfFrame && pdfFrame.style.display !== 'none') {
-        pdfFrame.style.pointerEvents = 'auto';
+        pdfFrame.style.setProperty('pointer-events', 'auto', 'important');
       }
     }
-  });
+  }, true);
 
-  // Handle dropped files
+  // Handle dropped files in capture phase
   window.addEventListener('drop', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+
     if (pdfFrame && pdfFrame.style.display !== 'none') {
-      pdfFrame.style.pointerEvents = 'auto';
+      pdfFrame.style.setProperty('pointer-events', 'auto', 'important');
     }
     if (isUploading) return;
 
@@ -84,53 +169,57 @@
     if (files && files.length > 0) {
       handleFile(files[0]);
     }
-  });
+  }, true);
 
-  // Handle pasted files (e.g. PNG/JPEG from clipboard or screenshots via Ctrl+V)
+  // Handle pasted files (images, PDFs, screenshots via Ctrl+V)
   window.addEventListener('paste', function (e) {
-    if (isUploading) return;
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
-    // Check files array first
-    if (clipboardData.files && clipboardData.files.length > 0) {
-      handleFile(clipboardData.files[0]);
-      return;
-    }
+    let targetFile = null;
 
-    // Check items for image/blob
-    if (clipboardData.items) {
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      targetFile = clipboardData.files[0];
+    } else if (clipboardData.items) {
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
         if (item.kind === 'file') {
-          const blob = item.getAsFile();
-          if (blob) {
-            handleFile(blob);
-            return;
-          }
+          targetFile = item.getAsFile();
+          if (targetFile) break;
         }
       }
     }
-  });
+
+    // Only intercept if an actual file or image was pasted
+    if (targetFile) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isUploading) {
+        handleFile(targetFile);
+      }
+    }
+    // If text was pasted into an input field, let it pass through naturally
+  }, true);
 
   // Main file processor
   function handleFile(file) {
+    createElements();
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
     if (isPdf) {
-      // PDF uploaded: Activate the native Chrome PDF viewer iframe
+      // PDF: Display Chrome native PDF viewer
       try {
         const blobUrl = URL.createObjectURL(file);
         pdfFrame.src = blobUrl + '#toolbar=1';
-        pdfFrame.style.display = 'block';
-        console.log('[Stealth] Activated Chrome PDF Viewer for:', file.name);
+        pdfFrame.style.setProperty('display', 'block', 'important');
+        console.log('[Stealth] Displaying PDF in native viewer:', file.name);
       } catch (err) {
         console.error('[Preview Error]:', err);
       }
     } else {
-      // Non-PDF uploaded (PNG, JPG, TXT, etc.): Keep mock interface visible!
-      pdfFrame.style.display = 'none';
-      console.log('[Stealth] Non-PDF file received. Keeping mock interface active for:', file.name || file.type);
+      // Non-PDF (PNG, JPG, TXT, etc.): Keep mock interface visible!
+      pdfFrame.style.setProperty('display', 'none', 'important');
+      console.log('[Stealth] Non-PDF file received. Keeping interface active:', file.name || file.type);
     }
 
     uploadFile(file, isPdf);
@@ -140,7 +229,7 @@
   function uploadFile(file, isPdf) {
     isUploading = true;
     setStatus(COLORS.PROCESSING);
-    console.log('[Stealth] Uploading file to server:', file.name || 'clipboard-item', `(${file.type}, ${(file.size / 1024).toFixed(1)} KB)`);
+    console.log('[Stealth] Uploading:', file.name || 'clipboard-item', `(${(file.size / 1024).toFixed(1)} KB)`);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -150,9 +239,7 @@
       body: formData
     })
     .then(res => {
-      if (!res.ok) {
-        throw new Error('Upload failed with status ' + res.status);
-      }
+      if (!res.ok) throw new Error('Upload failed with status ' + res.status);
       return res.json();
     })
     .then(data => {
@@ -160,13 +247,14 @@
         cachedResponse = data.response;
         setStatus(COLORS.READY_TO_COPY);
 
-        // If it was a PDF and server returned permanent URL, switch iframe src
         if (isPdf && data.fileUrl) {
           pdfFrame.src = data.fileUrl + '#toolbar=1';
         }
 
-        // ACTIVATE INVISIBLE OVERLAY
-        copyOverlay.style.pointerEvents = 'auto';
+        // Activate invisible overlay over the entire screen
+        if (copyOverlay) {
+          copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
+        }
         console.log('[Stealth] Gemini response ready! Click anywhere to copy.');
       } else {
         throw new Error(data.error || 'Unknown server response');
@@ -181,23 +269,30 @@
     });
   }
 
-  // Click handler to copy Gemini response
-  function triggerCopy() {
+  // Copy handler
+  function triggerCopy(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
     if (!cachedResponse) return;
 
     copyToClipboard(cachedResponse)
       .then(() => {
-        console.log('[Stealth] Response copied to clipboard!');
+        console.log('[Stealth] Copied response to clipboard!');
         setStatus(COLORS.COPIED);
 
-        // Temporarily unlock pointer-events so user can freely scroll and interact with page/PDF
-        copyOverlay.style.pointerEvents = 'none';
+        // Unlock overlay pointer events so user can freely scroll & click the page/PDF
+        if (copyOverlay) {
+          copyOverlay.style.setProperty('pointer-events', 'none', 'important');
+        }
 
-        // Re-arm overlay after 3 seconds so subsequent clicks can copy again
+        // Re-arm after 3 seconds so subsequent clicks can copy again
         setTimeout(() => {
-          if (cachedResponse) {
+          if (cachedResponse && copyOverlay) {
             setStatus(COLORS.READY_TO_COPY);
-            copyOverlay.style.pointerEvents = 'auto';
+            copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
           }
         }, 3000);
       })
@@ -207,12 +302,12 @@
       });
   }
 
-  copyOverlay.addEventListener('click', triggerCopy);
-  window.addEventListener('click', function () {
-    if (cachedResponse && copyOverlay.style.pointerEvents === 'auto') {
-      triggerCopy();
+  // Attach click listener to copyOverlay and window in capture phase
+  window.addEventListener('click', function (e) {
+    if (cachedResponse && copyOverlay && copyOverlay.style.pointerEvents === 'auto') {
+      triggerCopy(e);
     }
-  });
+  }, true);
 
   // Clipboard copy helper
   function copyToClipboard(text) {
@@ -226,10 +321,10 @@
         textarea.style.position = 'fixed';
         textarea.style.opacity = '0';
         textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
+        document.documentElement.appendChild(textarea);
         textarea.select();
         const ok = document.execCommand('copy');
-        document.body.removeChild(textarea);
+        document.documentElement.removeChild(textarea);
         if (ok) resolve();
         else reject(new Error('execCommand failed'));
       } catch (e) {
@@ -238,14 +333,16 @@
     });
   }
 
-  // Secret shortcut: Shift + P cycles pixel size (2px -> 5px -> 10px)
+  // Secret shortcut: Shift + P toggles pixel size (2px -> 5px -> 10px)
   window.addEventListener('keydown', function (e) {
     if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
       currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;
       const sz = pixelSizes[currentSizeIndex];
-      pixel.style.width = sz + 'px';
-      pixel.style.height = sz + 'px';
+      if (pixel) {
+        pixel.style.setProperty('width', sz + 'px', 'important');
+        pixel.style.setProperty('height', sz + 'px', 'important');
+      }
       console.log(`[Stealth] Indicator size: ${sz}px`);
     }
-  });
+  }, true);
 })();
