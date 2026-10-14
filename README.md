@@ -47,12 +47,30 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 *(Alternatively, you can copy `.env.example` to `.env` and set `GEMINI_API_KEY` there!)*
 
 ### 3. Run the Server
+
+**Standard Port (3000):**
 ```bash
 npm start
 ```
 
-Visit the stealth page at:
-👉 **`http://localhost:3000`**
+**Custom Port (e.g. 8080):**
+```bash
+node server.js 8080
+# or in .env: PORT=8080
+```
+
+**HTTPS on Port 443 with Apache SSL Certs:**
+```bash
+# On Windows (Run as Administrator):
+node server.js 443
+
+# On Linux/WSL (Run with sudo for ports < 1024):
+sudo PORT=443 node server.js
+```
+The server will automatically discover your Apache SSL certificates from:
+`C:\Users\niduka\AppData\Roaming\Apache24\conf\ssl` (or `/mnt/c/Users/...`, or `./ssl/`).
+Once loaded, you can access the page securely over HTTPS:
+👉 **`https://localhost`** or **`https://niduka.southeastasia.cloudapp.azure.com`**
 
 ---
 

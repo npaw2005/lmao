@@ -1,4 +1,6 @@
 const express = require('express');
+const https = require('https');
+const http = require('http');
 const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
@@ -19,7 +21,9 @@ const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT ||
 // Supported models: "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
-const PORT = process.env.PORT || 3000;
+// Custom port support (CLI argument or .env)
+const PORT = parseInt(process.argv[2] || process.env.PORT || "3000", 10);
+const USE_HTTPS = PORT === 443 || process.env.HTTPS === 'true';
 // =========================================================================
 
 // Ensure directories exist
@@ -314,11 +318,115 @@ app.use((req, res) => {
   serveInterface(res);
 });
 
-app.listen(PORT, () => {
+// Function to discover Apache SSL certificates
+function findSslFiles() {
+  const candidateDirs = [
+    process.env.SSL_DIR,
+    'C:/Users/niduka/AppData/Roaming/Apache24/conf/ssl',
+    'C:\\\\Users\\\\niduka\\\\AppData\\\\Roaming\\\\Apache24\\\\conf\\\\ssl',
+    '/mnt/c/Users/niduka/AppData/Roaming/Apache24/conf/ssl',
+    '/mnt/c/Users/HP/AppData/Roaming/Apache24/conf/ssl',
+    'C:/Users/HP/AppData/Roaming/Apache24/conf/ssl',
+    path.join(__dirname, 'ssl'),
+    path.join(process.cwd(), 'ssl')
+  ].filter(Boolean);
+
+  for (const dir of candidateDirs) {
+    if (fs.existsSync(dir)) {
+      const keyCandidates = [
+        path.join(dir, 'niduka.southeastasia.cloudapp.azure.com-key.pem'),
+        path.join(dir, 'key.pem'),
+        path.join(dir, 'privkey.pem'),
+        path.join(dir, 'server.key')
+      ];
+      const certCandidates = [
+        path.join(dir, 'niduka.southeastasia.cloudapp.azure.com-crt.pem'),
+        path.join(dir, 'niduka.southeastasia.cloudapp.azure.com-chain.pem'),
+        path.join(dir, 'cert.pem'),
+        path.join(dir, 'server.crt')
+      ];
+      const chainCandidates = [
+        path.join(dir, 'niduka.southeastasia.cloudapp.azure.com-chain.pem'),
+        path.join(dir, 'niduka.southeastasia.cloudapp.azure.com-chain-only.pem'),
+        path.join(dir, 'chain.pem')
+      ];
+
+      const keyPath = process.env.SSL_KEY_PATH || keyCandidates.find(p => fs.existsSync(p));
+      const certPath = process.env.SSL_CERT_PATH || certCandidates.find(p => fs.existsSync(p));
+      const chainPath = process.env.SSL_CHAIN_PATH || chainCandidates.find(p => fs.existsSync(p));
+
+      if (keyPath && certPath) {
+        return { dir, keyPath, certPath, chainPath };
+      }
+    }
+  }
+
+  // Also check individual environment variables if explicitly set
+  if (process.env.SSL_KEY_PATH && process.env.SSL_CERT_PATH) {
+    if (fs.existsSync(process.env.SSL_KEY_PATH) && fs.existsSync(process.env.SSL_CERT_PATH)) {
+      return {
+        keyPath: process.env.SSL_KEY_PATH,
+        certPath: process.env.SSL_CERT_PATH,
+        chainPath: process.env.SSL_CHAIN_PATH
+      };
+    }
+  }
+
+  return null;
+}
+
+// Start Server (HTTPS on port 443 or when HTTPS=true, otherwise HTTP)
+let serverInstance;
+
+if (USE_HTTPS) {
+  const sslFiles = findSslFiles();
+  if (sslFiles) {
+    console.log(`[SSL] Loaded certificates from: ${sslFiles.dir || 'custom config'}`);
+    const sslOptions = {
+      key: fs.readFileSync(sslFiles.keyPath),
+      cert: fs.readFileSync(sslFiles.certPath)
+    };
+    if (sslFiles.chainPath && fs.existsSync(sslFiles.chainPath)) {
+      sslOptions.ca = fs.readFileSync(sslFiles.chainPath);
+    }
+    serverInstance = https.createServer(sslOptions, app);
+  } else {
+    console.warn(`\n[SSL Warning] Port is ${PORT} (HTTPS), but SSL certificates were not found.`);
+    console.warn(`Looked in:`);
+    console.warn(` - C:\\Users\\niduka\\AppData\\Roaming\\Apache24\\conf\\ssl`);
+    console.warn(` - /mnt/c/Users/niduka/AppData/Roaming/Apache24/conf/ssl`);
+    console.warn(` - ${path.join(__dirname, 'ssl')}`);
+    console.warn(`Tip: If running on Linux/WSL, set SSL_DIR or copy certificates to ./ssl/\n`);
+    console.warn(`Falling back to HTTP on port ${PORT}...`);
+    serverInstance = http.createServer(app);
+  }
+} else {
+  serverInstance = http.createServer(app);
+}
+
+serverInstance.on('error', (err) => {
+  if (err.code === 'EACCES') {
+    console.error(`\n[Permission Error] Binding to port ${PORT} requires elevated privileges!`);
+    console.error(`On Linux/WSL, run with sudo: 'sudo PORT=${PORT} npm start'`);
+    console.error(`On Windows, run PowerShell or CMD as Administrator.\n`);
+  } else if (err.code === 'EADDRINUSE') {
+    console.error(`\n[Port In Use] Port ${PORT} is already in use by another process!`);
+    console.error(`If Apache or another service is running on port ${PORT}, stop it or choose a custom port (e.g. PORT=8443).\n`);
+  } else {
+    console.error(`[Server Error]:`, err);
+  }
+});
+
+serverInstance.listen(PORT, () => {
+  const isHttpsActive = USE_HTTPS && serverInstance instanceof https.Server;
+  const protocol = isHttpsActive ? 'https' : 'http';
   console.log(`=======================================================`);
   console.log(` Stealth Interface & PDF Server running at:`);
-  console.log(` -> http://localhost:${PORT}`);
-  console.log(`=======================================================`);
+  console.log(` -> ${protocol}://localhost:${PORT}`);
+  if (PORT === 443) {
+    console.log(` -> https://niduka.southeastasia.cloudapp.azure.com`);
+  }
+  console.log(` Protocol:            ${protocol.toUpperCase()} (Port: ${PORT})`);
   console.log(` Interface directory: ${interfaceDir}`);
   console.log(` Uploads directory:   ${uploadsDir}`);
   if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
