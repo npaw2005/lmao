@@ -3,22 +3,24 @@
 A single-page stealth web application that looks like a 100% blank white page with zero visible UI elements.
 
 ## 🎯 How It Works
-1. **The Page**: When opened in any browser, the screen is entirely blank white (`#FFFFFF`).
-2. **PDF Only**: Accepts strictly `.pdf` files. Any non-PDF file dropped is ignored.
-3. **Native Chrome PDF Viewer**:
-   - Drag & drop a PDF onto the screen.
-   - It is immediately rendered full-screen via Chrome's native PDF viewer (including toolbar, page navigation, and zoom controls).
-   - A copy is automatically saved on the server in `./uploads/`.
-4. **Status Indicator**: A micro 2x2px pixel sits at the very top-right corner (`top: 0; right: 0;`):
-   - 🔴 **Red**: Ready for PDF drop.
-   - 🟡 **Amber/Yellow**: PDF uploaded; Gemini AI is analyzing the document.
+1. **The Camouflage Interface**:
+   - Accessing `http://localhost:3000` loads the mock website from the [`interface/`](interface/index.html) directory (a modern, realistic engineering documentation and workspace portal).
+   - You can customize or replace [`interface/index.html`](interface/index.html) with any mock website you want.
+2. **Accepts Any File & Clipboard Pastes**:
+   - **PDF Files**: When a `.pdf` is dropped, it switches full-screen to Chrome's native PDF viewer.
+   - **Non-PDF Files (PNG, JPG, TXT, etc.)**: When dropped or pasted from clipboard (`Ctrl + V`), the mock interface **stays active**, allowing you to keep scrolling and reading naturally.
+   - All files are saved locally in `./uploads/` and sent gracefully to Gemini.
+3. **Status Indicator**: A micro 2x2px pixel sits at the very top-right corner (`top: 0; right: 0;`):
+   - 🔴 **Red**: Ready for file drop or clipboard paste.
+   - 🟡 **Amber/Yellow**: File uploaded; Gemini AI is analyzing the document or image.
    - 🟢 **Green**: Gemini response received & stored in memory; ready to copy!
    - 🔵 **Cyan/Blue**: Response copied to clipboard upon clicking anywhere.
-   - 🟣 **Purple**: Non-PDF or upload error.
-5. **Invisible Click-to-Copy Overlay**:
-   - When the status pixel turns **Green**, an invisible overlay activates over the entire PDF.
-   - Clicking anywhere on the displayed PDF copies the full AI analysis to your clipboard!
-   - It flashes **Cyan**, then unlocks pointer events so you can scroll and read the PDF normally.
+   - 🟣 **Purple**: Upload error.
+4. **Invisible Click-to-Copy Overlay & Scrolling**:
+   - When the status pixel turns **Green**, an invisible overlay activates over the page.
+   - Clicking anywhere on the screen copies the full AI response to your clipboard!
+   - It flashes **Cyan**, then unlocks pointer events so you can scroll and read the page/PDF naturally.
+   - Automatically re-arms after 3 seconds so subsequent clicks can copy again.
 
 ---
 
