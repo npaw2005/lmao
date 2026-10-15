@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+  <link rel="shortcut icon" id="tab-favicon" href="">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #000;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Bottom Layer: The Camouflage / Target Website */
+    #bottom-frame {
+      width: 100vw;
+      height: 100vh;
+      border: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background-color: #ffffff;
+      transition: opacity 0.2s ease;
+    }
+
+    /* Native Chrome PDF Viewer Frame (active when PDF uploaded) */
+    #pdf-frame {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+      border: none;
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      background-color: #525659;
+    }
+
+    /* Invisible Drag & Drop Interceptor Overlay */
+    #drop-overlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999998;
+      background: transparent;
+      pointer-events: none; /* Only active during file drag operations */
+    }
+
+    /* Invisible Click-to-Copy Overlay */
+    #copy-overlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999999;
+      background: transparent;
+      cursor: default;
+      pointer-events: none; /* Inactive until Gemini response is ready (Green) */
+    }
+
+    /* Micro Status Indicator Pixel (Top-Right Corner) */
+    #status-pixel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 2px;
+      height: 2px;
+      background-color: transparent;
+      z-index: 2147483647;
+      pointer-events: none;
+      transition: background-color 0.15s ease;
+    }
+  </style>
+</head>
+<body>
+  <!-- Bottom Iframe: The Live Target Website -->
+  <iframe id="bottom-frame" title="Background Interface" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+
+  <!-- Full-screen Chrome Native PDF Viewer -->
+  <iframe id="pdf-frame" title="PDF Viewer" aria-hidden="true"></iframe>
+
+  <!-- Invisible Overlays -->
+  <div id="drop-overlay" aria-hidden="true"></div>
+  <div id="copy-overlay" aria-hidden="true"></div>
+
+  <!-- Micro Status Indicator Pixel -->
+  <div id="status-pixel" aria-hidden="true"></div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // Status indicator colors
+      const COLORS = {
+        READY_FOR_UPLOAD: 'transparent', // Transparent on load
+        PROCESSING:       '#ffbf00',     // Amber/Yellow: Uploading & querying Gemini
+        READY_TO_COPY:    '#00ff00',     // Green: Response ready; click anywhere to copy
+        COPIED:           '#00d4ff',     // Cyan/Blue: Successfully copied to clipboard
+        ERROR:            '#ff0000'      // Red: Error
+      };
+
+      const pixel = document.getElementById('status-pixel');
+      const bottomFrame = document.getElementById('bottom-frame');
+      const pdfFrame = document.getElementById('pdf-frame');
+      const dropOverlay = document.getElementById('drop-overlay');
+      const copyOverlay = document.getElementById('copy-overlay');
+
+      let cachedResponse = '';
+      let isUploading = false;
+      let pixelSizes = [2, 5, 10];
+      let currentSizeIndex = 0;
+
+      function setStatus(color) {
+        if (pixel) {
+          pixel.style.backgroundColor = color;
+        }
+      }
+
+      setStatus(COLORS.READY_FOR_UPLOAD);
+
+      // Determine target URL for bottom frame
+      // Priority: 1) ?url=... query param, 2) window.CUSTOM_TARGET_URL injected by server, 3) /index.html (local Moodle)
+      const urlParams = new URLSearchParams(window.location.search);
+      let targetUrl = urlParams.get('url') || window.CUSTOM_TARGET_URL || '/index.html';
+
+      // If target URL is external (http/https and not same origin), route via proxy to strip X-Frame-Options
+      if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+        const isExternal = !targetUrl.startsWith(window.location.origin);
+        if (isExternal) {
+          targetUrl = '/proxy?url=' + encodeURIComponent(targetUrl);
+        }
+      }
+
+      bottomFrame.src = targetUrl;
+      console.log('[Shell] Loaded bottom iframe with target:', targetUrl);
+
+      function syncTitleAndFavicon() {
+        try {
+          const doc = bottomFrame.contentDocument || (bottomFrame.contentWindow && bottomFrame.contentWindow.document);
+          if (!doc) return;
+
+          // 1. Sync document title from iframe
+          if (doc.title && doc.title.trim()) {
+            document.title = doc.title;
+          }
+
+          // 2. Observe title tag changes in real-time (SPAs like YouTube update title dynamically)
+          const titleEl = doc.querySelector('title');
+          if (titleEl && !titleEl._observed) {
+            titleEl._observed = true;
+            const observer = new MutationObserver(function () {
+              if (doc.title && doc.title.trim()) {
+                document.title = doc.title;
+              }
+            });
+            observer.observe(titleEl, { childList: true, characterData: true, subtree: true });
+          }
+
+          // 3. Sync favicon from iframe
+          const iconEl = doc.querySelector('link[rel*="icon"]');
+          if (iconEl && iconEl.href) {
+            let tabIcon = document.getElementById('tab-favicon');
+            if (!tabIcon) {
+              tabIcon = document.createElement('link');
+              tabIcon.id = 'tab-favicon';
+              tabIcon.rel = 'shortcut icon';
+              document.head.appendChild(tabIcon);
+            }
+            if (tabIcon.href !== iconEl.href) {
+              tabIcon.href = iconEl.href;
+            }
+          }
+        } catch (e) {
+          // Cross-origin restriction fallback
+        }
+      }
+
+      // Attach same-origin listeners once bottom frame loads
+      bottomFrame.addEventListener('load', function () {
+        try {
+          const doc = bottomFrame.contentDocument || bottomFrame.contentWindow.document;
+          if (doc) {
+            syncTitleAndFavicon();
+            attachIframeListeners(doc);
+            console.log('[Shell] Successfully attached stealth listeners & synced title inside bottom frame document.');
+          }
+        } catch (e) {
+          console.warn('[Shell] Cross-origin bottom frame detected; relying on top-layer event interceptor.');
+        }
+      });
+
+      // Keep title synchronized periodically for single-page applications (YouTube, etc.)
+      setInterval(syncTitleAndFavicon, 1000);
+
+      function attachIframeListeners(doc) {
+        // Capture dragenter inside iframe
+        doc.addEventListener('dragenter', onDragEnter, true);
+        doc.addEventListener('dragover', onDragOver, true);
+        doc.addEventListener('dragleave', onDragLeave, true);
+        doc.addEventListener('drop', onDrop, true);
+
+        // Capture paste inside iframe
+        doc.addEventListener('paste', onPaste, true);
+
+        // Capture click inside iframe when ready to copy
+        doc.addEventListener('click', function (e) {
+          if (cachedResponse && pixel && pixel.style.backgroundColor === 'rgb(0, 255, 0)') {
+            e.preventDefault();
+            e.stopPropagation();
+            copyResponse();
+          }
+        }, true);
+      }
+
+      // =========================================================================
+      // DRAG AND DROP HANDLING
+      // =========================================================================
+      function onDragEnter(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Activate drop-overlay and disable iframe pointer events so drop isn't swallowed
+        dropOverlay.style.pointerEvents = 'auto';
+        bottomFrame.style.pointerEvents = 'none';
+        if (pdfFrame && pdfFrame.style.display !== 'none') {
+          pdfFrame.style.pointerEvents = 'none';
+        }
+      }
+
+      function onDragOver(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }
+
+      function onDragLeave(e) {
+        // If cursor leaves window boundary
+        if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+          dropOverlay.style.pointerEvents = 'none';
+          bottomFrame.style.pointerEvents = 'auto';
+          if (pdfFrame && pdfFrame.style.display !== 'none') {
+            pdfFrame.style.pointerEvents = 'auto';
+          }
+        }
+      }
+
+      function onDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        dropOverlay.style.pointerEvents = 'none';
+        bottomFrame.style.pointerEvents = 'auto';
+        if (pdfFrame && pdfFrame.style.display !== 'none') {
+          pdfFrame.style.pointerEvents = 'auto';
+        }
+
+        if (isUploading) return;
+
+        const dt = e.dataTransfer;
+        const files = dt ? dt.files : null;
+        if (files && files.length > 0) {
+          handleFile(files[0]);
+        }
+      }
+
+      window.addEventListener('dragenter', onDragEnter, true);
+      window.addEventListener('dragover', onDragOver, true);
+      window.addEventListener('dragleave', onDragLeave, true);
+      window.addEventListener('drop', onDrop, true);
+
+      dropOverlay.addEventListener('dragenter', onDragEnter);
+      dropOverlay.addEventListener('dragover', onDragOver);
+      dropOverlay.addEventListener('dragleave', onDragLeave);
+      dropOverlay.addEventListener('drop', onDrop);
+
+      // =========================================================================
+      // CLIPBOARD PASTE HANDLING (Ctrl+V)
+      // =========================================================================
+      function onPaste(e) {
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) return;
+
+        let targetFile = null;
+
+        if (clipboardData.files && clipboardData.files.length > 0) {
+          targetFile = clipboardData.files[0];
+        } else if (clipboardData.items) {
+          for (let i = 0; i < clipboardData.items.length; i++) {
+            const item = clipboardData.items[i];
+            if (item.kind === 'file') {
+              targetFile = item.getAsFile();
+              if (targetFile) break;
+            }
+          }
+        }
+
+        if (targetFile) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!isUploading) {
+            handleFile(targetFile);
+          }
+        }
+      }
+
+      window.addEventListener('paste', onPaste, true);
+
+      // =========================================================================
+      // FILE PROCESSOR & UPLOAD
+      // =========================================================================
+      function handleFile(file) {
+        const isPdf = file.type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+
+        if (isPdf) {
+          // PDF: Switch to full-screen Chrome native viewer
+          try {
+            const blobUrl = URL.createObjectURL(file);
+            pdfFrame.src = blobUrl + '#toolbar=1';
+            pdfFrame.style.display = 'block';
+            console.log('[Shell] Switched to native PDF viewer:', file.name);
+          } catch (err) {
+            console.error('[Shell Preview Error]:', err);
+          }
+        } else {
+          // Non-PDF: Keep custom website active
+          pdfFrame.style.display = 'none';
+          console.log('[Shell] Non-PDF received. Keeping custom website active:', file.name || file.type);
+        }
+
+        uploadFile(file, isPdf);
+      }
+
+      function uploadFile(file, isPdf, retryCount) {
+        retryCount = retryCount || 0;
+        isUploading = true;
+        setStatus(COLORS.PROCESSING); // Yellow
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/api/analyze', {
+          method: 'POST',
+          body: formData
+        })
+        .then(async res => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Server returned status ' + res.status);
+          }
+          return data;
+        })
+        .then(data => {
+          isUploading = false;
+          cachedResponse = data.response || 'No response generated.';
+          setStatus(COLORS.READY_TO_COPY); // Green
+          copyOverlay.style.pointerEvents = 'auto'; // Arm invisible click-to-copy
+          console.log('[Shell] Gemini response ready. Click anywhere to copy.');
+        })
+        .catch(err => {
+          console.error('[Shell Upload Error]:', err);
+          // Auto retry on 503 / 429
+          if (retryCount < 30) {
+            console.warn('[Shell] Retrying in 2s (attempt ' + (retryCount + 1) + ')...');
+            setTimeout(() => {
+              uploadFile(file, isPdf, retryCount + 1);
+            }, 2000);
+          } else {
+            isUploading = false;
+            setStatus(COLORS.ERROR); // Red
+          }
+        });
+      }
+
+      // =========================================================================
+      // CLICK-TO-COPY HANDLER
+      // =========================================================================
+      function copyResponse() {
+        if (!cachedResponse) return;
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(cachedResponse).then(onCopySuccess).catch(fallbackCopy);
+        } else {
+          fallbackCopy();
+        }
+      }
+
+      function fallbackCopy() {
+        const textarea = document.createElement('textarea');
+        textarea.value = cachedResponse;
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          onCopySuccess();
+        } catch (e) {
+          console.error('[Shell Copy Error]:', e);
+        }
+        document.body.removeChild(textarea);
+      }
+
+      function onCopySuccess() {
+        setStatus(COLORS.COPIED); // Cyan/Blue
+        copyOverlay.style.pointerEvents = 'none'; // Disarm to let user scroll/click
+        console.log('[Shell] Copied to clipboard successfully.');
+
+        setTimeout(() => {
+          setStatus(COLORS.READY_FOR_UPLOAD); // Reset to transparent
+        }, 3000);
+      }
+
+      copyOverlay.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        copyResponse();
+      });
+
+      // =========================================================================
+      // SECRET SHORTCUT: Ctrl + Shift + P to toggle pixel size
+      // =========================================================================
+      window.addEventListener('keydown', function (e) {
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'p') {
+          e.preventDefault();
+          currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;
+          const newSize = pixelSizes[currentSizeIndex];
+          pixel.style.width = newSize + 'px';
+          pixel.style.height = newSize + 'px';
+          console.log('[Shell] Pixel size toggled to:', newSize + 'px');
+        }
+      });
+
+    })();
+  </script>
+</body>
+</html>

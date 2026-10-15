@@ -18,10 +18,11 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
   "TASK: go through the attachment and give me answers to all of the questions in there with the question number. IMPORTANT INSTRUCTIONS: most oF the time you will be dealing with programming coding so only give the actual code no need of lenghty explainers but pls do include short comments where necessary. NEVER give incomplete or partial codes for any question and you must provide the fully complete code. do not omit repeating code parts thinking they are trvial such as int main, include, etc. always give the comlete code for each and every question. as a whole program. always double check the codes that are complex and long.";
 
-// Parse CLI arguments flexibly (supports positional args or flags: --port, -p, --model, -m)
+// Parse CLI arguments flexibly (supports positional args or flags: --port, -p, --model, -m, --url, -u, --target, -t)
 const args = process.argv.slice(2);
 let cliPort = null;
 let cliModel = null;
+let cliUrl = null;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -29,8 +30,12 @@ for (let i = 0; i < args.length; i++) {
     cliPort = args[++i];
   } else if (arg === '--model' || arg === '-m') {
     cliModel = args[++i];
+  } else if (arg === '--url' || arg === '-u' || arg === '--target' || arg === '-t') {
+    cliUrl = args[++i];
   } else if (!isNaN(arg) && !cliPort) {
     cliPort = arg;
+  } else if ((arg.startsWith('http://') || arg.startsWith('https://')) && !cliUrl) {
+    cliUrl = arg;
   } else if (isNaN(arg) && !cliModel && !arg.startsWith('-')) {
     cliModel = arg;
   }
@@ -42,6 +47,9 @@ const GEMINI_MODEL = cliModel || process.env.GEMINI_MODEL || "gemini-3.5-flash-l
 // Port selection: CLI argument takes first priority, then .env, then default 3000
 const PORT = parseInt(cliPort || process.env.PORT || "3000", 10);
 const USE_HTTPS = PORT === 443 || process.env.HTTPS === 'true';
+
+// Optional custom camouflage URL: CLI argument takes first priority, then .env, then empty
+const TARGET_URL = cliUrl || process.env.TARGET_URL || process.env.CUSTOM_URL || "";
 // =========================================================================
 
 // Ensure directories exist
@@ -58,6 +66,210 @@ app.use(express.json());
 
 // Serve uploads statically
 app.use('/uploads', express.static(uploadsDir));
+
+// Reverse proxy endpoint to allow embedding ANY external website inside an iframe without X-Frame-Options or CSP blocks
+app.all('/proxy', async (req, res) => {
+  const target = req.query.url || TARGET_URL;
+  if (!target) return res.status(400).send('Missing target URL');
+
+  // Allow CORS so iframe scripts can communicate seamlessly
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  try {
+    const fetchOptions = {
+      method: req.method,
+      headers: {
+        'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': req.headers['accept'] || '*/*',
+        'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9'
+      }
+    };
+
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+      if (typeof req.body === 'object') {
+        fetchOptions.body = JSON.stringify(req.body);
+        fetchOptions.headers['Content-Type'] = 'application/json';
+      } else {
+        fetchOptions.body = req.body;
+      }
+    }
+
+    const upstreamRes = await fetch(target, fetchOptions);
+
+    const contentType = upstreamRes.headers.get('content-type') || 'text/html';
+    res.status(upstreamRes.status);
+    res.setHeader('Content-Type', contentType);
+
+    // If HTML, inject base tag and the stealth navigation interceptor
+    if (contentType.includes('text/html')) {
+      let html = await upstreamRes.text();
+      try {
+        const parsedUrl = new URL(target);
+        const baseUrl = parsedUrl.origin + '/';
+        const baseTag = `\n  <base href="${baseUrl}">\n`;
+        
+        // Navigation interceptor script ensures all links clicked inside the iframe route through /proxy
+        const proxyNavScript = `
+  <script id="stealth-nav-script">
+  (function() {
+    try {
+      Object.defineProperty(window, 'top', { get: function() { return window.self; } });
+      Object.defineProperty(window, 'parent', { get: function() { return window.self; } });
+    } catch(e) {}
+
+    // Intercept clicks on links so every navigation routes through /proxy
+    document.addEventListener('click', function(e) {
+      var a = e.target && (e.target.closest ? e.target.closest('a') : null);
+      if (!a) return;
+
+      if (a.target === '_top' || a.target === '_parent' || a.target === '_blank') {
+        a.target = '_self';
+      }
+
+      var rawHref = a.getAttribute('href');
+      if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript:')) return;
+
+      try {
+        var dest = new URL(a.href, window.location.href).href;
+        if (dest.startsWith('http://') || dest.startsWith('https://')) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Transform YouTube watch URLs into embed URLs so videos play cleanly inside iframe
+          if (dest.includes('youtube.com/watch') || dest.includes('youtu.be/')) {
+            var match = dest.match(/(?:v=|youtu\\.be\\/|embed\\/)([a-zA-Z0-9_-]{11})/);
+            if (match && match[1]) {
+              dest = 'https://www.youtube.com/embed/' + match[1] + '?autoplay=1';
+            }
+          }
+
+          window.location.href = '/proxy?url=' + encodeURIComponent(dest);
+        }
+      } catch(err) {}
+    }, true);
+
+    // Intercept GET form submissions (search bars, etc.)
+    document.addEventListener('submit', function(e) {
+      var form = e.target;
+      if (!form) return;
+      if (form.target === '_top' || form.target === '_parent' || form.target === '_blank') {
+        form.target = '_self';
+      }
+      var method = (form.method || 'GET').toUpperCase();
+      if (method === 'GET') {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          var formData = new FormData(form);
+          var params = new URLSearchParams(formData);
+          var actionUrl = new URL(form.action || window.location.href, window.location.href);
+          actionUrl.search = params.toString();
+          window.location.href = '/proxy?url=' + encodeURIComponent(actionUrl.href);
+        } catch(err) {}
+      }
+    }, true);
+
+    // Prevent popups from escaping iframe
+    window.open = function(url) {
+      if (url) {
+        try {
+          var full = new URL(url, window.location.href).href;
+          window.location.href = '/proxy?url=' + encodeURIComponent(full);
+        } catch(e) {
+          window.location.href = url;
+        }
+      }
+      return window;
+    };
+  })();
+  </script>
+`;
+
+        const injection = baseTag + proxyNavScript;
+        if (/<head[^>]*>/i.test(html)) {
+          html = html.replace(/(<head[^>]*>)/i, `$1${injection}`);
+        } else {
+          html = injection + html;
+        }
+      } catch (e) {
+        // Fallback without base tag
+      }
+      return res.send(html);
+    }
+
+    const bodyBuffer = Buffer.from(await upstreamRes.arrayBuffer());
+    return res.send(bodyBuffer);
+  } catch (err) {
+    console.error('[Proxy Error]:', err.message);
+    return res.status(502).send('Proxy error: ' + err.message);
+  }
+});
+
+// Helper to derive initial title and favicon from a URL
+function deriveTitleAndFavicon(url) {
+  if (!url || url === '/index.html') {
+    return { title: 'Home | UGVLE', favicon: '/theme/images/theme_favicon.ico' };
+  }
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      return { title: 'YouTube', favicon: 'https://www.youtube.com/s/desktop/f51d9955/img/favicon.ico' };
+    }
+    if (host.includes('google.com')) {
+      return { title: 'Google', favicon: 'https://www.google.com/favicon.ico' };
+    }
+    if (host.includes('wikipedia.org')) {
+      return { title: 'Wikipedia, the free encyclopedia', favicon: 'https://en.wikipedia.org/static/favicon/wikipedia.ico' };
+    }
+    if (host.includes('github.com')) {
+      return { title: 'GitHub', favicon: 'https://github.githubassets.com/favicons/favicon.svg' };
+    }
+    if (host.includes('azure.com') || host.includes('microsoft.com')) {
+      return { title: 'Microsoft Azure', favicon: 'https://azure.microsoft.com/favicon.ico' };
+    }
+    if (host.includes('ucsc.cmb.ac.lk')) {
+      return { title: 'Home | UGVLE', favicon: '/theme/images/theme_favicon.ico' };
+    }
+
+    const parts = host.replace(/^www\./, '').split('.');
+    const siteName = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : host;
+    return { title: siteName, favicon: `${parsed.origin}/favicon.ico` };
+  } catch (e) {
+    return { title: 'Home', favicon: '' };
+  }
+}
+
+// Helper to serve the stealth shell (Iframe over Iframe container)
+function serveShell(res, customUrl) {
+  let shellHtml = fs.readFileSync(path.join(publicDir, 'shell.html'), 'utf-8');
+  const target = customUrl || TARGET_URL || '';
+  const meta = deriveTitleAndFavicon(target);
+
+  // Pre-populate title and favicon so the browser tab immediately shows the target site's title
+  shellHtml = shellHtml.replace('<title></title>', `<title>${meta.title}</title>`);
+  if (meta.favicon) {
+    shellHtml = shellHtml.replace('id="tab-favicon" href=""', `id="tab-favicon" href="${meta.favicon}"`);
+  }
+
+  if (target) {
+    shellHtml = shellHtml.replace('window.CUSTOM_TARGET_URL ||', `window.CUSTOM_TARGET_URL || "${target}" ||`);
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  return res.send(shellHtml);
+}
+
+// Dedicated route for the stealth shell
+app.get('/shell', (req, res) => {
+  serveShell(res, req.query.url || TARGET_URL);
+});
 
 // Serve stealth.js directly with no-cache headers so updates apply immediately
 app.get('/stealth.js', (req, res) => {
@@ -100,7 +312,15 @@ function serveInterface(res) {
 }
 
 // Serve root and index pages before static file handlers
-app.get(['/', '/index.html', '/index.php'], (req, res) => {
+app.get(['/', '/index.php'], (req, res) => {
+  // If a custom URL is provided via ?url=, or TARGET_URL is configured in .env, or IFRAME_MODE=true:
+  if (req.query.url || TARGET_URL || process.env.IFRAME_MODE === 'true') {
+    return serveShell(res, req.query.url || TARGET_URL);
+  }
+  serveInterface(res);
+});
+
+app.get('/index.html', (req, res) => {
   serveInterface(res);
 });
 
@@ -544,6 +764,12 @@ serverInstance.listen(PORT, () => {
     console.log(` -> https://niduka.southeastasia.cloudapp.azure.com`);
   }
   console.log(` Protocol:            ${protocol.toUpperCase()} (Port: ${PORT})`);
+  console.log(` AI Model:            ${GEMINI_MODEL}`);
+  if (TARGET_URL) {
+    console.log(` Camouflage URL:      ${TARGET_URL} (Iframe Shell active)`);
+  } else {
+    console.log(` Camouflage:          Local Moodle interface (/interface)`);
+  }
   console.log(` Interface directory: ${interfaceDir}`);
   console.log(` Uploads directory:   ${uploadsDir}`);
   if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
