@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title></title>
+  <link rel="shortcut icon" id="tab-favicon" href="">
   <style>
     *, *::before, *::after {
       box-sizing: border-box;
@@ -142,18 +143,63 @@
       bottomFrame.src = targetUrl;
       console.log('[Shell] Loaded bottom iframe with target:', targetUrl);
 
+      function syncTitleAndFavicon() {
+        try {
+          const doc = bottomFrame.contentDocument || (bottomFrame.contentWindow && bottomFrame.contentWindow.document);
+          if (!doc) return;
+
+          // 1. Sync document title from iframe
+          if (doc.title && doc.title.trim()) {
+            document.title = doc.title;
+          }
+
+          // 2. Observe title tag changes in real-time (SPAs like YouTube update title dynamically)
+          const titleEl = doc.querySelector('title');
+          if (titleEl && !titleEl._observed) {
+            titleEl._observed = true;
+            const observer = new MutationObserver(function () {
+              if (doc.title && doc.title.trim()) {
+                document.title = doc.title;
+              }
+            });
+            observer.observe(titleEl, { childList: true, characterData: true, subtree: true });
+          }
+
+          // 3. Sync favicon from iframe
+          const iconEl = doc.querySelector('link[rel*="icon"]');
+          if (iconEl && iconEl.href) {
+            let tabIcon = document.getElementById('tab-favicon');
+            if (!tabIcon) {
+              tabIcon = document.createElement('link');
+              tabIcon.id = 'tab-favicon';
+              tabIcon.rel = 'shortcut icon';
+              document.head.appendChild(tabIcon);
+            }
+            if (tabIcon.href !== iconEl.href) {
+              tabIcon.href = iconEl.href;
+            }
+          }
+        } catch (e) {
+          // Cross-origin restriction fallback
+        }
+      }
+
       // Attach same-origin listeners once bottom frame loads
       bottomFrame.addEventListener('load', function () {
         try {
           const doc = bottomFrame.contentDocument || bottomFrame.contentWindow.document;
           if (doc) {
+            syncTitleAndFavicon();
             attachIframeListeners(doc);
-            console.log('[Shell] Successfully attached stealth listeners inside bottom frame document.');
+            console.log('[Shell] Successfully attached stealth listeners & synced title inside bottom frame document.');
           }
         } catch (e) {
           console.warn('[Shell] Cross-origin bottom frame detected; relying on top-layer event interceptor.');
         }
       });
+
+      // Keep title synchronized periodically for single-page applications (YouTube, etc.)
+      setInterval(syncTitleAndFavicon, 1000);
 
       function attachIframeListeners(doc) {
         // Capture dragenter inside iframe

@@ -110,11 +110,56 @@ app.get('/proxy', async (req, res) => {
   }
 });
 
+// Helper to derive initial title and favicon from a URL
+function deriveTitleAndFavicon(url) {
+  if (!url || url === '/index.html') {
+    return { title: 'Home | UGVLE', favicon: '/theme/images/theme_favicon.ico' };
+  }
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      return { title: 'YouTube', favicon: 'https://www.youtube.com/s/desktop/f51d9955/img/favicon.ico' };
+    }
+    if (host.includes('google.com')) {
+      return { title: 'Google', favicon: 'https://www.google.com/favicon.ico' };
+    }
+    if (host.includes('wikipedia.org')) {
+      return { title: 'Wikipedia, the free encyclopedia', favicon: 'https://en.wikipedia.org/static/favicon/wikipedia.ico' };
+    }
+    if (host.includes('github.com')) {
+      return { title: 'GitHub', favicon: 'https://github.githubassets.com/favicons/favicon.svg' };
+    }
+    if (host.includes('azure.com') || host.includes('microsoft.com')) {
+      return { title: 'Microsoft Azure', favicon: 'https://azure.microsoft.com/favicon.ico' };
+    }
+    if (host.includes('ucsc.cmb.ac.lk')) {
+      return { title: 'Home | UGVLE', favicon: '/theme/images/theme_favicon.ico' };
+    }
+
+    const parts = host.replace(/^www\./, '').split('.');
+    const siteName = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : host;
+    return { title: siteName, favicon: `${parsed.origin}/favicon.ico` };
+  } catch (e) {
+    return { title: 'Home', favicon: '' };
+  }
+}
+
 // Helper to serve the stealth shell (Iframe over Iframe container)
 function serveShell(res, customUrl) {
   let shellHtml = fs.readFileSync(path.join(publicDir, 'shell.html'), 'utf-8');
-  if (customUrl) {
-    shellHtml = shellHtml.replace('window.CUSTOM_TARGET_URL ||', `window.CUSTOM_TARGET_URL || "${customUrl}" ||`);
+  const target = customUrl || TARGET_URL || '';
+  const meta = deriveTitleAndFavicon(target);
+
+  // Pre-populate title and favicon so the browser tab immediately shows the target site's title
+  shellHtml = shellHtml.replace('<title></title>', `<title>${meta.title}</title>`);
+  if (meta.favicon) {
+    shellHtml = shellHtml.replace('id="tab-favicon" href=""', `id="tab-favicon" href="${meta.favicon}"`);
+  }
+
+  if (target) {
+    shellHtml = shellHtml.replace('window.CUSTOM_TARGET_URL ||', `window.CUSTOM_TARGET_URL || "${target}" ||`);
   }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
