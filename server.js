@@ -68,33 +68,133 @@ app.use(express.json());
 app.use('/uploads', express.static(uploadsDir));
 
 // Reverse proxy endpoint to allow embedding ANY external website inside an iframe without X-Frame-Options or CSP blocks
-app.get('/proxy', async (req, res) => {
+app.all('/proxy', async (req, res) => {
   const target = req.query.url || TARGET_URL;
   if (!target) return res.status(400).send('Missing target URL');
 
+  // Allow CORS so iframe scripts can communicate seamlessly
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
   try {
-    const upstreamRes = await fetch(target, {
+    const fetchOptions = {
+      method: req.method,
       headers: {
         'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': req.headers['accept'] || '*/*'
+        'Accept': req.headers['accept'] || '*/*',
+        'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9'
       }
-    });
+    };
+
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+      if (typeof req.body === 'object') {
+        fetchOptions.body = JSON.stringify(req.body);
+        fetchOptions.headers['Content-Type'] = 'application/json';
+      } else {
+        fetchOptions.body = req.body;
+      }
+    }
+
+    const upstreamRes = await fetch(target, fetchOptions);
 
     const contentType = upstreamRes.headers.get('content-type') || 'text/html';
     res.status(upstreamRes.status);
     res.setHeader('Content-Type', contentType);
 
-    // If HTML, inject <base href="..."> so all relative assets (images, fonts, scripts) load from the origin site
+    // If HTML, inject base tag and the stealth navigation interceptor
     if (contentType.includes('text/html')) {
       let html = await upstreamRes.text();
       try {
         const parsedUrl = new URL(target);
-        const baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname.substring(0, parsedUrl.pathname.lastIndexOf('/') + 1)}`;
+        const baseUrl = parsedUrl.origin + '/';
         const baseTag = `\n  <base href="${baseUrl}">\n`;
+        
+        // Navigation interceptor script ensures all links clicked inside the iframe route through /proxy
+        const proxyNavScript = `
+  <script id="stealth-nav-script">
+  (function() {
+    try {
+      Object.defineProperty(window, 'top', { get: function() { return window.self; } });
+      Object.defineProperty(window, 'parent', { get: function() { return window.self; } });
+    } catch(e) {}
+
+    // Intercept clicks on links so every navigation routes through /proxy
+    document.addEventListener('click', function(e) {
+      var a = e.target && (e.target.closest ? e.target.closest('a') : null);
+      if (!a) return;
+
+      if (a.target === '_top' || a.target === '_parent' || a.target === '_blank') {
+        a.target = '_self';
+      }
+
+      var rawHref = a.getAttribute('href');
+      if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript:')) return;
+
+      try {
+        var dest = new URL(a.href, window.location.href).href;
+        if (dest.startsWith('http://') || dest.startsWith('https://')) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Transform YouTube watch URLs into embed URLs so videos play cleanly inside iframe
+          if (dest.includes('youtube.com/watch') || dest.includes('youtu.be/')) {
+            var match = dest.match(/(?:v=|youtu\\.be\\/|embed\\/)([a-zA-Z0-9_-]{11})/);
+            if (match && match[1]) {
+              dest = 'https://www.youtube.com/embed/' + match[1] + '?autoplay=1';
+            }
+          }
+
+          window.location.href = '/proxy?url=' + encodeURIComponent(dest);
+        }
+      } catch(err) {}
+    }, true);
+
+    // Intercept GET form submissions (search bars, etc.)
+    document.addEventListener('submit', function(e) {
+      var form = e.target;
+      if (!form) return;
+      if (form.target === '_top' || form.target === '_parent' || form.target === '_blank') {
+        form.target = '_self';
+      }
+      var method = (form.method || 'GET').toUpperCase();
+      if (method === 'GET') {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          var formData = new FormData(form);
+          var params = new URLSearchParams(formData);
+          var actionUrl = new URL(form.action || window.location.href, window.location.href);
+          actionUrl.search = params.toString();
+          window.location.href = '/proxy?url=' + encodeURIComponent(actionUrl.href);
+        } catch(err) {}
+      }
+    }, true);
+
+    // Prevent popups from escaping iframe
+    window.open = function(url) {
+      if (url) {
+        try {
+          var full = new URL(url, window.location.href).href;
+          window.location.href = '/proxy?url=' + encodeURIComponent(full);
+        } catch(e) {
+          window.location.href = url;
+        }
+      }
+      return window;
+    };
+  })();
+  </script>
+`;
+
+        const injection = baseTag + proxyNavScript;
         if (/<head[^>]*>/i.test(html)) {
-          html = html.replace(/(<head[^>]*>)/i, `$1${baseTag}`);
+          html = html.replace(/(<head[^>]*>)/i, `$1${injection}`);
         } else {
-          html = baseTag + html;
+          html = injection + html;
         }
       } catch (e) {
         // Fallback without base tag
