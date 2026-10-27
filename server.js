@@ -16,7 +16,43 @@ const app = express();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
-  "TASK: go through the attachment and give me answers to all of the questions in there with the question number. IMPORTANT INSTRUCTIONS: most oF the time you will be dealing with programming coding so only give the actual code no need of lenghty explainers but pls do include short comments where necessary. NEVER give incomplete or partial codes for any question and you must provide the fully complete code. do not omit repeating code parts thinking they are trvial such as int main, include, etc. always give the comlete code for each and every question. as a whole program. always double check the codes that are complex and long.";
+  "TASK: You are an expert examination assistant. Analyze the provided question and multiple-choice options (provided as text or attachment).\n" +
+  "Determine the correct answer.\n" +
+  "CRITICAL INSTRUCTIONS:\n" +
+  "1. Output ONLY the number (e.g. 1, 2, 3, 4) or letter (e.g. A, B, C, D) corresponding to the single correct option.\n" +
+  "2. Do NOT provide any explanation, working, reasoning, markdown formatting, or words.\n" +
+  "3. If multiple separate questions are present, output only the question number and correct answer number/letter separated by a comma (e.g. 1-A, 2-C).\n" +
+  "Your entire output must strictly be only the answer number or letter.";
+
+// Helper to extract the core MCQ answer number/letter from AI response
+function extractAnswer(rawText) {
+  if (!rawText) return '';
+  let text = rawText.trim();
+  // Strip markdown formatting like **1** or `B` or *3*
+  text = text.replace(/[\*\_`#]/g, '').trim();
+  text = text.replace(/^(?:Option|Choice|Answer|Correct answer is)\s*[:\-]?\s*/i, '').trim();
+
+  // If already short (e.g. "1", "2", "A", "B", "1-A, 2-C"):
+  if (text.length <= 10) {
+    return text.replace(/\.$/, '').trim();
+  }
+
+  // Look for patterns like "Option 2", "Answer: 3", "Answer: B", "3."
+  const patterns = [
+    /(?:correct\s+)?(?:answer|option|choice)(?:\s+is|\s*:)?\s*([0-9A-Za-z])/i,
+    /^([0-9A-Za-z])[\.\)\:]\s+/m,
+    /\b([0-9A-Za-z])\b/
+  ];
+
+  for (const pat of patterns) {
+    const match = text.match(pat);
+    if (match && match[1]) {
+      return match[1].toUpperCase();
+    }
+  }
+
+  return text.slice(0, 10).trim();
+}
 
 // Parse CLI arguments flexibly (supports positional args or flags: --port, -p, --model, -m, --url, -u, --target, -t)
 const args = process.argv.slice(2);
@@ -498,26 +534,13 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
 
     // If API key is still the placeholder, return simulated response for testing
     if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
-      console.warn('[Warning] GEMINI_API_KEY is not configured. Returning simulated response for testing.');
-      const demoResponse = `[SIMULATED GEMINI RESPONSE - Ready for Prank!]\n\n` +
-        `File: "${req.file.originalname}" (${(req.file.size / 1024).toFixed(1)} KB)\n` +
-        `MIME Type: ${mimeType}\n` +
-        `Stored locally at: ${fileUrl}\n\n` +
-        `Prompt: "${customPrompt}"\n\n` +
-        `Everything is working smoothly!\n` +
-        (isPdf ? `- PDF was detected and rendered in Chrome's native viewer.\n` : `- Non-PDF file (${mimeType}) received gracefully while mock interface remained active.\n`) +
-        `- Status indicator turned green.\n` +
-        `- Clicking anywhere copied this text to your clipboard!\n\n` +
-        `To get real AI responses from Google Gemini:\n` +
-        `1. Replace "YOUR_GEMINI_API_KEY_HERE" in server.js or set GEMINI_API_KEY in your .env file.\n` +
-        `2. Restart the server!`;
-
-      // Simulate network delay
-      await new Promise(r => setTimeout(r, 800));
+      console.warn('[Warning] GEMINI_API_KEY is not configured. Returning simulated MCQ response for testing.');
+      await new Promise(r => setTimeout(r, 600));
 
       return res.json({
         success: true,
-        response: demoResponse,
+        response: '3',
+        fullResponse: '3 (Simulated MCQ Answer)',
         fileUrl: fileUrl,
         filename: req.file.filename,
         isPdf: isPdf,
@@ -623,9 +646,13 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
       });
     }
 
+    const answerOnly = extractAnswer(generatedText);
+    console.log(`[Gemini Answer] Extracted: "${answerOnly}" (Raw length: ${generatedText.length})`);
+
     return res.json({
       success: true,
-      response: generatedText,
+      response: answerOnly,
+      fullResponse: generatedText,
       fileUrl: fileUrl,
       filename: req.file.filename,
       isPdf: isPdf,

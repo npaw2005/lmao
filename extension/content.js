@@ -22,14 +22,20 @@
   let isUploading = false;
   let cachedResponse = '';
   let currentColor = COLORS.READY_FOR_UPLOAD;
-  let pixelSizes = [2, 5, 10];
+
+  const dotSizes = [3, 6, 10];
+  const badgeSizes = [
+    { fontSize: '11px', minWidth: '15px', height: '15px', padding: '0 2px' }, // Small (Default: just readable enough)
+    { fontSize: '13px', minWidth: '18px', height: '18px', padding: '0 3px' }, // Medium
+    { fontSize: '16px', minWidth: '22px', height: '22px', padding: '0 4px' }  // Large
+  ];
   let currentSizeIndex = 0;
 
   let pixel = null;
   let copyOverlay = null;
 
   function ensureMounted() {
-    // 1. Status Indicator Pixel
+    // 1. Status Indicator / Answer Badge Element
     if (!document.getElementById('stealth-status-pixel')) {
       pixel = document.createElement('div');
       pixel.id = 'stealth-status-pixel';
@@ -40,8 +46,8 @@
         'position: fixed !important',
         'top: 0px !important',
         'right: 0px !important',
-        'width: ' + pixelSizes[currentSizeIndex] + 'px !important',
-        'height: ' + pixelSizes[currentSizeIndex] + 'px !important',
+        'width: ' + dotSizes[currentSizeIndex] + 'px !important',
+        'height: ' + dotSizes[currentSizeIndex] + 'px !important',
         'background-color: ' + currentColor + ' !important',
         'margin: 0px !important',
         'padding: 0px !important',
@@ -97,10 +103,62 @@
     document.addEventListener('DOMContentLoaded', ensureMounted);
   }
 
+  function showAnswerBadge(text) {
+    if (!pixel) return;
+    const sz = badgeSizes[currentSizeIndex];
+    pixel.textContent = text || '';
+    pixel.style.setProperty('display', 'flex', 'important');
+    pixel.style.setProperty('align-items', 'center', 'important');
+    pixel.style.setProperty('justify-content', 'center', 'important');
+    pixel.style.setProperty('width', 'auto', 'important');
+    pixel.style.setProperty('min-width', sz.minWidth, 'important');
+    pixel.style.setProperty('height', sz.height, 'important');
+    pixel.style.setProperty('line-height', sz.height, 'important');
+    pixel.style.setProperty('padding', sz.padding, 'important');
+    pixel.style.setProperty('font-size', sz.fontSize, 'important');
+    pixel.style.setProperty('font-weight', 'bold', 'important');
+    pixel.style.setProperty('font-family', 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', 'important');
+    pixel.style.setProperty('color', '#000000', 'important');
+    pixel.style.setProperty('background-color', COLORS.READY_TO_COPY, 'important'); // Green
+    pixel.style.setProperty('border-radius', '2px', 'important');
+    pixel.style.setProperty('box-shadow', '0 1px 3px rgba(0,0,0,0.5)', 'important');
+    pixel.style.setProperty('pointer-events', 'auto', 'important');
+    pixel.style.setProperty('cursor', 'pointer', 'important');
+  }
+
+  function showCopiedBadge() {
+    if (!pixel) return;
+    pixel.textContent = cachedResponse || '✓';
+    pixel.style.setProperty('background-color', COLORS.COPIED, 'important'); // Cyan
+    pixel.style.setProperty('color', '#000000', 'important');
+  }
+
+  function resetToDot(color) {
+    if (!pixel) return;
+    pixel.textContent = '';
+    const sz = dotSizes[currentSizeIndex];
+    pixel.style.setProperty('display', 'block', 'important');
+    pixel.style.setProperty('width', sz + 'px', 'important');
+    pixel.style.setProperty('height', sz + 'px', 'important');
+    pixel.style.setProperty('min-width', '0px', 'important');
+    pixel.style.setProperty('padding', '0px', 'important');
+    pixel.style.setProperty('background-color', color, 'important');
+    pixel.style.setProperty('border-radius', '0px', 'important');
+    pixel.style.setProperty('box-shadow', 'none', 'important');
+    pixel.style.setProperty('pointer-events', 'none', 'important');
+    pixel.style.setProperty('cursor', 'default', 'important');
+  }
+
   function setStatus(color) {
     currentColor = color;
-    if (pixel) {
-      pixel.style.setProperty('background-color', color, 'important');
+    if (!pixel) return;
+
+    if (color === COLORS.READY_TO_COPY) {
+      showAnswerBadge(cachedResponse);
+    } else if (color === COLORS.COPIED) {
+      showCopiedBadge();
+    } else {
+      resetToDot(color);
     }
   }
 
@@ -168,15 +226,11 @@
       return;
     }
 
-    // 3. Shift + P: Cycle indicator pixel size (2px -> 5px -> 10px)
+    // 3. Shift + P: Cycle indicator badge / pixel size
     if (e.shiftKey && key === 'p') {
-      currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;
-      const newSize = pixelSizes[currentSizeIndex];
-      if (pixel) {
-        pixel.style.setProperty('width', newSize + 'px', 'important');
-        pixel.style.setProperty('height', newSize + 'px', 'important');
-      }
-      console.log('[Stealth] Indicator size:', newSize + 'px');
+      currentSizeIndex = (currentSizeIndex + 1) % badgeSizes.length;
+      setStatus(currentColor);
+      console.log('[Stealth] Indicator size index:', currentSizeIndex, badgeSizes[currentSizeIndex]);
     }
   }, true);
 
@@ -205,6 +259,7 @@
 
   // =========================================================================
   // CAPTURE-PHASE CLIPBOARD PASTE (Ctrl+V)
+  // Supports text questions with MCQ answers, as well as screenshots/files
   // =========================================================================
   window.addEventListener('paste', function (e) {
     if (!isArmed || isUploading) return;
@@ -213,6 +268,7 @@
 
     let targetFile = null;
 
+    // Check if an image or file was pasted (e.g. screenshot of the question)
     if (clipboardData.files && clipboardData.files.length > 0) {
       targetFile = clipboardData.files[0];
     } else if (clipboardData.items) {
@@ -225,18 +281,19 @@
       }
     }
 
-    // Support plain text question pastes (when not focused inside an editable text input)
+    // Capture textual input (including question text and multiple choice options)
     if (!targetFile) {
       const activeEl = document.activeElement;
-      const isInput = activeEl && (
-        activeEl.tagName === 'INPUT' || 
+      const isTextInput = activeEl && (
+        (activeEl.tagName === 'INPUT' && !['radio', 'checkbox', 'button', 'submit'].includes((activeEl.type || '').toLowerCase())) ||
         activeEl.tagName === 'TEXTAREA' || 
         activeEl.isContentEditable
       );
-      if (!isInput) {
+
+      if (!isTextInput) {
         const text = clipboardData.getData('text/plain');
         if (text && text.trim().length > 0) {
-          targetFile = new File([text], 'clipboard-text.txt', { type: 'text/plain' });
+          targetFile = new File([text.trim()], 'mcq-question.txt', { type: 'text/plain' });
         }
       }
     }
@@ -254,18 +311,18 @@
   function processFile(file) {
     ensureMounted();
     isUploading = true;
-    setStatus(COLORS.PROCESSING); // Yellow
+    setStatus(COLORS.PROCESSING); // Yellow dot
 
     const reader = new FileReader();
     reader.onload = function () {
       const dataUrl = reader.result;
       const base64Data = dataUrl.split(',')[1];
-      const mimeType = file.type || 'application/octet-stream';
+      const mimeType = file.type || 'text/plain';
 
       chrome.runtime.sendMessage({
         action: 'ANALYZE_FILE',
         fileBase64: base64Data,
-        filename: file.name || 'clipboard-item.png',
+        filename: file.name || 'question.txt',
         mimeType: mimeType
       }, (res) => {
         isUploading = false;
@@ -277,12 +334,13 @@
           return;
         }
 
-        cachedResponse = res.data.response || 'No response';
-        setStatus(COLORS.READY_TO_COPY); // Green
+        cachedResponse = (res.data.response || '').trim();
+        // Green badge with the answer number!
+        setStatus(COLORS.READY_TO_COPY);
         if (copyOverlay) {
           copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
         }
-        console.log('[Stealth] AI response ready. Click anywhere to copy.');
+        console.log(`[Stealth] MCQ Answer Ready: "${cachedResponse}". Click anywhere to copy.`);
       });
     };
     reader.onerror = function () {
@@ -322,17 +380,18 @@
   }
 
   function onCopySuccess() {
-    setStatus(COLORS.COPIED); // Cyan/Blue
+    setStatus(COLORS.COPIED); // Cyan badge
     if (copyOverlay) {
       copyOverlay.style.setProperty('pointer-events', 'none', 'important');
     }
-    console.log('[Stealth] Response copied to clipboard!');
+    console.log('[Stealth] Answer copied to clipboard:', cachedResponse);
 
     setTimeout(() => {
       setStatus(COLORS.READY_FOR_UPLOAD);
     }, 3000);
   }
 
+  // Intercept click on document or badge when ready to copy
   document.addEventListener('click', function (e) {
     if (currentColor === COLORS.READY_TO_COPY) {
       e.preventDefault();

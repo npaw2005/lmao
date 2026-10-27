@@ -3,43 +3,50 @@
 
   // Status indicator color codes
   const COLORS = {
-    READY_FOR_UPLOAD: 'transparent', // Transparent on initial load (invisible until file is dropped)
-    PROCESSING:       '#ffbf00',     // Amber/Yellow: Uploading and querying Gemini (stays yellow during retries)
-    READY_TO_COPY:    '#00ff00',     // Green: Response cached, click to copy
+    READY_FOR_UPLOAD: 'transparent', // Transparent on initial load
+    PROCESSING:       '#ffbf00',     // Amber/Yellow: Uploading and querying Gemini
+    READY_TO_COPY:    '#00ff00',     // Green: MCQ Answer ready, showing answer number!
     COPIED:           '#00d4ff',     // Cyan/Blue: Successfully copied to clipboard
-    ERROR:            '#ff0000'      // Red: Fatal error only
+    ERROR:            '#ff0000'      // Red: Error
   };
 
   let cachedResponse = '';
   let isUploading = false;
   let currentColor = COLORS.READY_FOR_UPLOAD;
-  let pixelSizes = [2, 5, 10];
+
+  const dotSizes = [3, 6, 10];
+  const badgeSizes = [
+    { fontSize: '11px', minWidth: '15px', height: '15px', padding: '0 2px' }, // Small (Default: just readable enough)
+    { fontSize: '13px', minWidth: '18px', height: '18px', padding: '0 3px' }, // Medium
+    { fontSize: '16px', minWidth: '22px', height: '22px', padding: '0 4px' }  // Large
+  ];
   let currentSizeIndex = 0;
 
-  // DOM Elements with inline styles using !important
+  // DOM Elements
   let pixel = null;
   let copyOverlay = null;
   let pdfFrame = null;
 
   function createElements() {
-    // 1. Status Pixel
+    // 1. Status Indicator / Answer Badge Element
     if (!document.getElementById('status-pixel')) {
       pixel = document.createElement('div');
       pixel.id = 'status-pixel';
       pixel.setAttribute('aria-hidden', 'true');
       pixel.style.cssText = [
+        'display: block !important',
+        'box-sizing: border-box !important',
         'position: fixed !important',
         'top: 0px !important',
         'right: 0px !important',
-        'width: ' + pixelSizes[currentSizeIndex] + 'px !important',
-        'height: ' + pixelSizes[currentSizeIndex] + 'px !important',
+        'width: ' + dotSizes[currentSizeIndex] + 'px !important',
+        'height: ' + dotSizes[currentSizeIndex] + 'px !important',
         'background-color: ' + currentColor + ' !important',
         'margin: 0px !important',
         'padding: 0px !important',
         'border: none !important',
         'outline: none !important',
         'box-shadow: none !important',
-        'transform: none !important',
         'opacity: 1 !important',
         'visibility: visible !important',
         'z-index: 2147483647 !important',
@@ -56,6 +63,8 @@
       copyOverlay.id = 'copy-overlay';
       copyOverlay.setAttribute('aria-hidden', 'true');
       copyOverlay.style.cssText = [
+        'display: block !important',
+        'box-sizing: border-box !important',
         'position: fixed !important',
         'top: 0px !important',
         'left: 0px !important',
@@ -100,38 +109,83 @@
       pdfFrame = document.getElementById('pdf-frame');
     }
 
-    // Mount to document.documentElement or document.body
     const targetRoot = document.body || document.documentElement;
     if (targetRoot) {
-      if (!document.getElementById('status-pixel')) targetRoot.appendChild(pixel);
-      if (!document.getElementById('copy-overlay')) targetRoot.appendChild(copyOverlay);
-      if (!document.getElementById('pdf-frame')) targetRoot.appendChild(pdfFrame);
+      if (!targetRoot.contains(pixel)) targetRoot.appendChild(pixel);
+      if (!targetRoot.contains(copyOverlay)) targetRoot.appendChild(copyOverlay);
+      if (!targetRoot.contains(pdfFrame)) targetRoot.appendChild(pdfFrame);
     }
   }
 
-  // Ensure elements are created and mounted
   createElements();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', createElements);
   }
   window.addEventListener('load', createElements);
-
-  // Periodic safety check in case frameworks (React/Vue/Moodle) re-render body
   setInterval(createElements, 1000);
+
+  function showAnswerBadge(text) {
+    if (!pixel) return;
+    const sz = badgeSizes[currentSizeIndex];
+    pixel.textContent = text || '';
+    pixel.style.setProperty('display', 'flex', 'important');
+    pixel.style.setProperty('align-items', 'center', 'important');
+    pixel.style.setProperty('justify-content', 'center', 'important');
+    pixel.style.setProperty('width', 'auto', 'important');
+    pixel.style.setProperty('min-width', sz.minWidth, 'important');
+    pixel.style.setProperty('height', sz.height, 'important');
+    pixel.style.setProperty('line-height', sz.height, 'important');
+    pixel.style.setProperty('padding', sz.padding, 'important');
+    pixel.style.setProperty('font-size', sz.fontSize, 'important');
+    pixel.style.setProperty('font-weight', 'bold', 'important');
+    pixel.style.setProperty('font-family', 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', 'important');
+    pixel.style.setProperty('color', '#000000', 'important');
+    pixel.style.setProperty('background-color', COLORS.READY_TO_COPY, 'important'); // Green
+    pixel.style.setProperty('border-radius', '2px', 'important');
+    pixel.style.setProperty('box-shadow', '0 1px 3px rgba(0,0,0,0.5)', 'important');
+    pixel.style.setProperty('pointer-events', 'auto', 'important');
+    pixel.style.setProperty('cursor', 'pointer', 'important');
+  }
+
+  function showCopiedBadge() {
+    if (!pixel) return;
+    pixel.textContent = cachedResponse || '✓';
+    pixel.style.setProperty('background-color', COLORS.COPIED, 'important'); // Cyan
+    pixel.style.setProperty('color', '#000000', 'important');
+  }
+
+  function resetToDot(color) {
+    if (!pixel) return;
+    pixel.textContent = '';
+    const sz = dotSizes[currentSizeIndex];
+    pixel.style.setProperty('display', 'block', 'important');
+    pixel.style.setProperty('width', sz + 'px', 'important');
+    pixel.style.setProperty('height', sz + 'px', 'important');
+    pixel.style.setProperty('min-width', '0px', 'important');
+    pixel.style.setProperty('padding', '0px', 'important');
+    pixel.style.setProperty('background-color', color, 'important');
+    pixel.style.setProperty('border-radius', '0px', 'important');
+    pixel.style.setProperty('box-shadow', 'none', 'important');
+    pixel.style.setProperty('pointer-events', 'none', 'important');
+    pixel.style.setProperty('cursor', 'default', 'important');
+  }
 
   function setStatus(color) {
     currentColor = color;
-    if (pixel) {
-      pixel.style.setProperty('background-color', color, 'important');
+    if (!pixel) return;
+
+    if (color === COLORS.READY_TO_COPY) {
+      showAnswerBadge(cachedResponse);
+    } else if (color === COLORS.COPIED) {
+      showCopiedBadge();
+    } else {
+      resetToDot(color);
     }
   }
 
   // =========================================================================
   // CAPTURE-PHASE EVENT LISTENERS
-  // (Using useCapture=true ensures our listeners run BEFORE any complex framework)
   // =========================================================================
-
-  // Prevent browser's default file-opening navigation
   ['dragenter', 'dragover', 'dragleave'].forEach(eventName => {
     window.addEventListener(eventName, function (e) {
       e.preventDefault();
@@ -139,7 +193,6 @@
     }, true);
   });
 
-  // Temporarily disable iframe pointer events during drag so window catches drop
   window.addEventListener('dragenter', function () {
     if (pdfFrame && pdfFrame.style.display !== 'none') {
       pdfFrame.style.setProperty('pointer-events', 'none', 'important');
@@ -154,7 +207,6 @@
     }
   }, true);
 
-  // Handle dropped files in capture phase
   window.addEventListener('drop', function (e) {
     e.preventDefault();
     e.stopPropagation();
@@ -171,8 +223,10 @@
     }
   }, true);
 
-  // Handle pasted files (images, PDFs, screenshots via Ctrl+V)
+  // Capture-phase clipboard paste (Ctrl+V)
+  // Supports text questions with MCQ options, as well as images/screenshots
   window.addEventListener('paste', function (e) {
+    if (isUploading) return;
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
@@ -190,48 +244,51 @@
       }
     }
 
-    // Only intercept if an actual file or image was pasted
+    // Capture textual input (question + options)
+    if (!targetFile) {
+      const activeEl = document.activeElement;
+      const isTextInput = activeEl && (
+        (activeEl.tagName === 'INPUT' && !['radio', 'checkbox', 'button', 'submit'].includes((activeEl.type || '').toLowerCase())) ||
+        activeEl.tagName === 'TEXTAREA' || 
+        activeEl.isContentEditable
+      );
+
+      if (!isTextInput) {
+        const text = clipboardData.getData('text/plain');
+        if (text && text.trim().length > 0) {
+          targetFile = new File([text.trim()], 'mcq-question.txt', { type: 'text/plain' });
+        }
+      }
+    }
+
     if (targetFile) {
       e.preventDefault();
       e.stopPropagation();
-      if (!isUploading) {
-        handleFile(targetFile);
-      }
+      handleFile(targetFile);
     }
-    // If text was pasted into an input field, let it pass through naturally
   }, true);
 
-  // Main file processor
   function handleFile(file) {
     createElements();
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isPdf = file.type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
 
     if (isPdf) {
-      // PDF: Display Chrome native PDF viewer
       try {
         const blobUrl = URL.createObjectURL(file);
         pdfFrame.src = blobUrl + '#toolbar=1';
         pdfFrame.style.setProperty('display', 'block', 'important');
-        console.log('[Stealth] Displaying PDF in native viewer:', file.name);
-      } catch (err) {
-        console.error('[Preview Error]:', err);
-      }
+      } catch (err) {}
     } else {
-      // Non-PDF (PNG, JPG, TXT, etc.): Keep mock interface visible!
       pdfFrame.style.setProperty('display', 'none', 'important');
-      console.log('[Stealth] Non-PDF file received. Keeping interface active:', file.name || file.type);
     }
 
     uploadFile(file, isPdf);
   }
 
-  // Upload file to server and call Gemini (with automatic retry loop on high demand / 503)
   function uploadFile(file, isPdf, retryCount) {
     retryCount = retryCount || 0;
     isUploading = true;
-    // Keep status at PROCESSING (Yellow) so it never drops back to Red while retrying
-    setStatus(COLORS.PROCESSING);
-    console.log('[Stealth] Uploading:', file.name || 'clipboard-item', `(${(file.size / 1024).toFixed(1)} KB) - Attempt ${retryCount + 1}`);
+    setStatus(COLORS.PROCESSING); // Yellow dot
 
     const formData = new FormData();
     formData.append('file', file);
@@ -249,27 +306,25 @@
     })
     .then(data => {
       if (data.success && data.response) {
-        cachedResponse = data.response;
-        // GREEN! We successfully got the response!
+        cachedResponse = (data.response || '').trim();
+        // Green badge with the answer number!
         setStatus(COLORS.READY_TO_COPY);
 
         if (isPdf && data.fileUrl) {
           pdfFrame.src = data.fileUrl + '#toolbar=1';
         }
 
-        // Activate invisible overlay over the entire screen
         if (copyOverlay) {
           copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
         }
-        console.log('[Stealth] Gemini response received successfully! Click anywhere to copy.');
+        console.log(`[Stealth] MCQ Answer Ready: "${cachedResponse}". Click anywhere to copy.`);
         isUploading = false;
       } else {
         throw new Error(data.error || 'Invalid response format');
       }
     })
     .catch(err => {
-      console.warn(`[Stealth Retry ${retryCount + 1}] High demand / temporary error: ${err.message}. Retrying in 2.5s...`);
-      // Keep pixel YELLOW so the user knows it is still actively fetching
+      console.warn(`[Stealth Retry ${retryCount + 1}]: ${err.message}. Retrying in 2.5s...`);
       setStatus(COLORS.PROCESSING);
       setTimeout(() => {
         uploadFile(file, isPdf, retryCount + 1);
@@ -277,7 +332,6 @@
     });
   }
 
-  // Copy handler
   function triggerCopy(e) {
     if (e) {
       e.preventDefault();
@@ -288,20 +342,15 @@
 
     copyToClipboard(cachedResponse)
       .then(() => {
-        console.log('[Stealth] Copied response to clipboard!');
-        setStatus(COLORS.COPIED);
+        console.log('[Stealth] Copied answer to clipboard:', cachedResponse);
+        setStatus(COLORS.COPIED); // Cyan badge
 
-        // Unlock overlay pointer events so user can freely scroll & click the page/PDF
         if (copyOverlay) {
           copyOverlay.style.setProperty('pointer-events', 'none', 'important');
         }
 
-        // Re-arm after 3 seconds so subsequent clicks can copy again
         setTimeout(() => {
-          if (cachedResponse && copyOverlay) {
-            setStatus(COLORS.READY_TO_COPY);
-            copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
-          }
+          setStatus(COLORS.READY_FOR_UPLOAD);
         }, 3000);
       })
       .catch(err => {
@@ -310,14 +359,12 @@
       });
   }
 
-  // Attach click listener to copyOverlay and window in capture phase
   window.addEventListener('click', function (e) {
-    if (cachedResponse && copyOverlay && copyOverlay.style.pointerEvents === 'auto') {
+    if (currentColor === COLORS.READY_TO_COPY) {
       triggerCopy(e);
     }
   }, true);
 
-  // Clipboard copy helper
   function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       return navigator.clipboard.writeText(text);
@@ -341,16 +388,12 @@
     });
   }
 
-  // Secret shortcut: Shift + P toggles pixel size (2px -> 5px -> 10px)
+  // Shift + P: Cycle indicator badge / dot size
   window.addEventListener('keydown', function (e) {
     if (e.shiftKey && (e.key === 'P' || e.key === 'p')) {
-      currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;
-      const sz = pixelSizes[currentSizeIndex];
-      if (pixel) {
-        pixel.style.setProperty('width', sz + 'px', 'important');
-        pixel.style.setProperty('height', sz + 'px', 'important');
-      }
-      console.log(`[Stealth] Indicator size: ${sz}px`);
+      currentSizeIndex = (currentSizeIndex + 1) % badgeSizes.length;
+      setStatus(currentColor);
+      console.log(`[Stealth] Indicator size: ${badgeSizes[currentSizeIndex].fontSize}`);
     }
   }, true);
 })();

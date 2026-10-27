@@ -104,15 +104,15 @@ Instead of running an iframe or proxy server for camouflage, you can use the **C
 
 ### 🎮 Extension Controls:
 - **<kbd>Alt + Q</kbd>** (or click toolbar icon): Arm/Disarm stealth mode on the current tab. Flashes a subtle amber pulse on arm, then stays transparent.
-- **<kbd>Ctrl + V</kbd> or Drag & Drop**: Send screenshot, PDF, image, or copied text to Gemini AI.
-- **Indicator Pixel States**:
-  - Transparent: Idle / Ready.
-  - 🟡 **Amber**: Uploading & AI analyzing.
-  - 🟢 **Green**: Response ready!
-  - 🔵 **Cyan**: Clicked anywhere and copied response to clipboard.
+- **<kbd>Ctrl + V</kbd>**: Paste copied MCQ question & multiple-choice options (also supports screenshots and documents).
+- **Indicator & Answer Display States**:
+  - **Transparent**: Idle / Ready.
+  - 🟡 **Amber**: Question uploaded & AI analyzing (color change continues during query).
+  - 🟢 **Green Badge with Answer Number**: AI has determined the correct option! The top-right pixel morphs into a compact green badge displaying the correct answer number/letter (e.g. `1`, `2`, `3`, `4` or `A`, `B`, `C`, `D`), readable just enough to the user.
+  - 🔵 **Cyan Badge**: Clicked anywhere on the screen; copies the answer to clipboard (resets to transparent after 3s).
   - 🔴 **Red**: Network or processing error (clears automatically).
-- **<kbd>Shift + P</kbd>**: Cycle indicator pixel size (`2px` → `5px` → `10px`).
-- **Left Click**: When indicator turns green, clicking anywhere silently copies the AI response to your clipboard.
+- **<kbd>Shift + P</kbd>**: Cycle indicator badge size (`Small 11px` → `Medium 13px` → `Large 16px`).
+- **Left Click**: When green answer badge is displayed, clicking anywhere silently copies the answer number to your clipboard.
 
 ---
 
