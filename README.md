@@ -92,8 +92,8 @@ Instead of running an iframe or proxy server for camouflage, you can use the **C
 ### 🌟 Advantages Over Iframe / Reverse Proxy:
 1. **Real Native Webpages**: Never breaks logins, sessions, OAuth, or modern web apps.
 2. **Zero CORS or Navigation Errors**: Never triggers `refused to connect` or CSP errors.
-3. **Completely On-Demand**: Triggered only when clicking the extension icon or pressing <kbd>Alt + S</kbd>.
-4. **Transparent on First Load**: The top-right micro indicator stays invisible until an action occurs.
+3. **Completely On-Demand**: Triggered on any page by pressing <kbd>Alt + Q</kbd> or clicking the extension icon.
+4. **Transparent on First Load**: The top-right micro indicator stays invisible until armed with <kbd>Alt + Q</kbd>.
 
 ### 📥 How to Install the Extension:
 1. Open Google Chrome and navigate to `chrome://extensions`.
@@ -103,7 +103,7 @@ Instead of running an iframe or proxy server for camouflage, you can use the **C
 5. *(Optional)* Right-click the extension icon in Chrome toolbar -> **Options** to configure your server URL (default: `https://niduka.southeastasia.cloudapp.azure.com` or `http://localhost:3000`).
 
 ### 🎮 Extension Controls:
-- **<kbd>Alt + S</kbd>** (or click toolbar icon): Arm/Disarm stealth mode on the current tab (flashes amber pulse on arm).
+- **<kbd>Alt + Q</kbd>** (or click toolbar icon): Arm/Disarm stealth mode on the current tab. Flashes a subtle amber pulse on arm, then stays transparent.
 - **<kbd>Ctrl + V</kbd> or Drag & Drop**: Send screenshot, PDF, image, or copied text to Gemini AI.
 - **Indicator Pixel States**:
   - Transparent: Idle / Ready.

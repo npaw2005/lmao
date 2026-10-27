@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Page Assistant",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Background productivity assistant",
   "permissions": [
     "activeTab",
@@ -13,7 +13,7 @@
     "<all_urls>"
   ],
   "action": {
-    "default_title": "Toggle Assistant (Alt+S)"
+    "default_title": "Toggle Assistant (Alt+Q)"
   },
   "background": {
     "service_worker": "background.js"
@@ -21,12 +21,19 @@
   "commands": {
     "toggle-stealth": {
       "suggested_key": {
-        "default": "Alt+S",
-        "mac": "Alt+S"
+        "default": "Alt+Q",
+        "mac": "Alt+Q"
       },
       "description": "Toggle Stealth Assistant"
     }
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
   "options_page": "options.html",
   "icons": {
     "48": "icon.png",

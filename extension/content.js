@@ -18,7 +18,7 @@
     ERROR:            '#ff0000'      // Red
   };
 
-  let isArmed = true;
+  let isArmed = false; // Starts dormant on page load; armed via Alt+Q or toolbar
   let isUploading = false;
   let cachedResponse = '';
   let currentColor = COLORS.READY_FOR_UPLOAD;
@@ -28,7 +28,7 @@
   let pixel = null;
   let copyOverlay = null;
 
-  function createElements() {
+  function ensureMounted() {
     // 1. Status Indicator Pixel
     if (!document.getElementById('stealth-status-pixel')) {
       pixel = document.createElement('div');
@@ -85,16 +85,16 @@
       copyOverlay = document.getElementById('stealth-copy-overlay');
     }
 
-    const targetRoot = document.documentElement || document.body;
+    const targetRoot = document.body || document.documentElement;
     if (targetRoot) {
-      if (!document.getElementById('stealth-status-pixel')) targetRoot.appendChild(pixel);
-      if (!document.getElementById('stealth-copy-overlay')) targetRoot.appendChild(copyOverlay);
+      if (!targetRoot.contains(pixel)) targetRoot.appendChild(pixel);
+      if (!targetRoot.contains(copyOverlay)) targetRoot.appendChild(copyOverlay);
     }
   }
 
-  createElements();
+  ensureMounted();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', createElements);
+    document.addEventListener('DOMContentLoaded', ensureMounted);
   }
 
   function setStatus(color) {
@@ -104,19 +104,21 @@
     }
   }
 
-  // Brief activation pulse so user knows stealth is armed
+  // Visual pulse on activation so user knows stealth is armed on this tab
   function pulseActivation() {
-    setStatus('#ffbf00');
+    ensureMounted();
+    setStatus(COLORS.PROCESSING); // Amber
     setTimeout(() => {
-      setStatus(COLORS.READY_FOR_UPLOAD);
+      if (currentColor === COLORS.PROCESSING && !isUploading) {
+        setStatus(COLORS.READY_FOR_UPLOAD); // Back to transparent
+      }
     }, 600);
   }
-
-  pulseActivation();
 
   // Toggle arming function
   window.__STEALTH_TOGGLE__ = function () {
     isArmed = !isArmed;
+    ensureMounted();
     if (isArmed) {
       pulseActivation();
       console.log('[Stealth] Armed and listening on this tab.');
@@ -134,6 +136,49 @@
       sendResponse({ isArmed: isArmed });
     }
   });
+
+  // =========================================================================
+  // KEYBOARD SHORTCUTS & SAVE INTERCEPTION
+  // =========================================================================
+  window.addEventListener('keydown', function (e) {
+    const key = (e.key || '').toLowerCase();
+
+    // 1. Primary hotkey: Alt + Q
+    if (e.altKey && key === 'q') {
+      e.preventDefault();
+      e.stopPropagation();
+      window.__STEALTH_TOGGLE__();
+      return;
+    }
+
+    // Also support Alt + Shift + S
+    if (e.altKey && e.shiftKey && key === 's') {
+      e.preventDefault();
+      e.stopPropagation();
+      window.__STEALTH_TOGGLE__();
+      return;
+    }
+
+    // 2. Intercept Ctrl + S / Cmd + S to prevent the Windows/Mac "Save As" explorer dialog
+    if ((e.ctrlKey || e.metaKey) && key === 's') {
+      e.preventDefault();
+      e.stopPropagation();
+      // Arm/toggle stealth instead of opening file save dialog
+      window.__STEALTH_TOGGLE__();
+      return;
+    }
+
+    // 3. Shift + P: Cycle indicator pixel size (2px -> 5px -> 10px)
+    if (e.shiftKey && key === 'p') {
+      currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;
+      const newSize = pixelSizes[currentSizeIndex];
+      if (pixel) {
+        pixel.style.setProperty('width', newSize + 'px', 'important');
+        pixel.style.setProperty('height', newSize + 'px', 'important');
+      }
+      console.log('[Stealth] Indicator size:', newSize + 'px');
+    }
+  }, true);
 
   // =========================================================================
   // CAPTURE-PHASE DRAG & DROP
@@ -207,7 +252,7 @@
   // FILE PROCESSOR & UPLOAD VIA SERVICE WORKER
   // =========================================================================
   function processFile(file) {
-    createElements();
+    ensureMounted();
     isUploading = true;
     setStatus(COLORS.PROCESSING); // Yellow
 
@@ -293,19 +338,6 @@
       e.preventDefault();
       e.stopPropagation();
       copyResponse();
-    }
-  }, true);
-
-  // Shortcut: Shift + P toggles indicator pixel size
-  window.addEventListener('keydown', function (e) {
-    if (e.shiftKey && e.key.toUpperCase() === 'P') {
-      currentSizeIndex = (currentSizeIndex + 1) % pixelSizes.length;
-      const newSize = pixelSizes[currentSizeIndex];
-      if (pixel) {
-        pixel.style.setProperty('width', newSize + 'px', 'important');
-        pixel.style.setProperty('height', newSize + 'px', 'important');
-      }
-      console.log('[Stealth] Indicator size:', newSize + 'px');
     }
   }, true);
 

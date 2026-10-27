@@ -10,7 +10,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   toggleStealthOnTab(tab);
 });
 
-// Handle keyboard shortcut (Alt + S)
+// Handle keyboard shortcut (Alt + Q)
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'toggle-stealth') {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -19,20 +19,27 @@ chrome.commands.onCommand.addListener(async (command) => {
 });
 
 async function toggleStealthOnTab(tab) {
-  if (!tab || !tab.id || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+  if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
     return;
   }
 
   try {
-    // Check if content script is already injected
+    // Check if content script is active on tab and toggle it
     await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_STEALTH' });
   } catch (err) {
-    // Content script not yet present; inject it now
+    // Content script not yet present (e.g. tab opened before extension loaded/updated)
+    // Inject it now and trigger toggle
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ['content.js']
       });
+      // Small tick to ensure script execution listeners are set
+      setTimeout(async () => {
+        try {
+          await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_STEALTH' });
+        } catch (e) {}
+      }, 50);
     } catch (injectErr) {
       console.error('[Background] Injection failed:', injectErr);
     }
