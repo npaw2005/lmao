@@ -11,8 +11,16 @@ const statusMsg = document.getElementById('statusMessage');
 
 // Load saved settings
 document.addEventListener('DOMContentLoaded', async () => {
-  const data = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
-  serverUrlInput.value = data.serverUrl || DEFAULT_SERVER_URL;
+  let data = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
+  let url = data.serverUrl || DEFAULT_SERVER_URL;
+
+  // Auto-migrate old Azure URL without port 8080
+  if (url === 'https://niduka.southeastasia.cloudapp.azure.com' || url === 'http://niduka.southeastasia.cloudapp.azure.com') {
+    url = DEFAULT_SERVER_URL;
+    chrome.storage.sync.set({ serverUrl: url });
+  }
+
+  serverUrlInput.value = url;
 });
 
 // Quick preset buttons

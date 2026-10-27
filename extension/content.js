@@ -329,12 +329,19 @@
         if (chrome.runtime.lastError || !res || !res.success) {
           const err = (res && res.error) || (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'Request failed';
           console.error('[Stealth Error]:', err);
+          if (pixel) {
+            pixel.title = 'Stealth Error: ' + err;
+          }
           setStatus(COLORS.ERROR); // Red
-          setTimeout(() => setStatus(COLORS.READY_FOR_UPLOAD), 3000);
+          setTimeout(() => {
+            if (pixel) pixel.title = '';
+            setStatus(COLORS.READY_FOR_UPLOAD);
+          }, 3500);
           return;
         }
 
         cachedResponse = (res.data.response || '').trim();
+        if (pixel) pixel.title = '';
         // Green badge with the answer number!
         setStatus(COLORS.READY_TO_COPY);
         if (copyOverlay) {

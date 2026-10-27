@@ -46,6 +46,25 @@ async function toggleStealthOnTab(tab) {
   }
 }
 
+async function getServerUrl() {
+  const settings = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
+  let url = (settings.serverUrl || DEFAULT_SERVER_URL).trim().replace(/\/+$/, '');
+
+  // Auto-migrate old Azure URLs without port 8080
+  if (url === 'https://niduka.southeastasia.cloudapp.azure.com' || url === 'http://niduka.southeastasia.cloudapp.azure.com') {
+    url = DEFAULT_SERVER_URL; // 'http://niduka.southeastasia.cloudapp.azure.com:8080'
+    chrome.storage.sync.set({ serverUrl: url }).catch(() => {});
+  }
+
+  // Ensure port 8080 uses http:// (not https://)
+  if (url.startsWith('https://') && url.includes(':8080')) {
+    url = url.replace('https://', 'http://');
+    chrome.storage.sync.set({ serverUrl: url }).catch(() => {});
+  }
+
+  return url;
+}
+
 // Forward file uploads from content script to middleman server
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'ANALYZE_FILE') {
@@ -58,10 +77,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function handleFileUpload(request) {
   const { fileBase64, filename, mimeType, prompt } = request;
-
-  // Retrieve configured server URL from storage
-  const settings = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
-  const serverUrl = (settings.serverUrl || DEFAULT_SERVER_URL).replace(/\/+$/, '');
+  const serverUrl = await getServerUrl();
 
   // Convert Base64 back into binary Blob
   const byteChars = atob(fileBase64);
@@ -73,21 +89,27 @@ async function handleFileUpload(request) {
   const fileBlob = new Blob([byteArray], { type: mimeType });
 
   const formData = new FormData();
-  formData.append('file', fileBlob, filename || 'upload.bin');
+  formData.append('file', fileBlob, filename || 'question.txt');
   if (prompt) {
     formData.append('prompt', prompt);
   }
 
   console.log(`[Background] Forwarding "${filename}" (${fileBlob.size} bytes) to: ${serverUrl}/api/analyze`);
 
-  const response = await fetch(`${serverUrl}/api/analyze`, {
-    method: 'POST',
-    body: formData
-  });
+  let response;
+  try {
+    response = await fetch(`${serverUrl}/api/analyze`, {
+      method: 'POST',
+      body: formData
+    });
+  } catch (netErr) {
+    console.error(`[Background] Network fetch failed connecting to ${serverUrl}:`, netErr);
+    throw new Error(`Cannot connect to ${serverUrl} (${netErr.message}). Check extension Options or server status.`);
+  }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    throw new Error(`Server returned HTTP ${response.status}: ${errorText || response.statusText}`);
+    throw new Error(`Server ${serverUrl} returned HTTP ${response.status}: ${errorText || response.statusText}`);
   }
 
   const json = await response.json();
