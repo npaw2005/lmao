@@ -3,7 +3,7 @@
 // Handles activation, script injection, and API forwarding (exempt from CORS)
 // =========================================================================
 
-const DEFAULT_SERVER_URL = 'https://niduka.southeastasia.cloudapp.azure.com';
+const DEFAULT_SERVER_URL = 'http://niduka.southeastasia.cloudapp.azure.com:8080';
 
 // Handle toolbar extension icon click
 chrome.action.onClicked.addListener(async (tab) => {

@@ -1,6 +1,6 @@
 'use strict';
 
-const DEFAULT_SERVER_URL = 'https://niduka.southeastasia.cloudapp.azure.com';
+const DEFAULT_SERVER_URL = 'http://niduka.southeastasia.cloudapp.azure.com:8080';
 
 const serverUrlInput = document.getElementById('serverUrl');
 const saveBtn = document.getElementById('saveBtn');
@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Quick preset buttons
 presetAzure.addEventListener('click', () => {
-  serverUrlInput.value = 'https://niduka.southeastasia.cloudapp.azure.com';
+  serverUrlInput.value = 'http://niduka.southeastasia.cloudapp.azure.com:8080';
 });
 
 presetLocal.addEventListener('click', () => {
