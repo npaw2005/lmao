@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Page Assistant Settings</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: #334155;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --success: #22c55e;
+      --error: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+      line-height: 1.5;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 540px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    p.subtitle {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-bottom: 24px;
+    }
+
+    .field {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+
+    .presets {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .btn-preset {
+      font-size: 0.75rem;
+      background: #334155;
+      color: #cbd5e1;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-preset:hover {
+      background: #475569;
+      color: #fff;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    button.btn-primary {
+      flex: 1;
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 16px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+
+    button.btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    button.btn-secondary {
+      background: #334155;
+      color: #fff;
+      font-weight: 500;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 16px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+
+    button.btn-secondary:hover {
+      background: #475569;
+    }
+
+    #statusMessage {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      min-height: 20px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .shortcut-tip {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    kbd {
+      background: #334155;
+      color: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      border: 1px solid #475569;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Settings</h1>
+    <p class="subtitle">Configure the middleman server endpoint for AI processing.</p>
+
+    <div class="field">
+      <label for="serverUrl">Backend Middleman Server URL</label>
+      <input type="text" id="serverUrl" placeholder="https://niduka.southeastasia.cloudapp.azure.com" spellcheck="false">
+      <div class="presets">
+        <button type="button" class="btn-preset" id="presetAzure">Remote Azure (Production)</button>
+        <button type="button" class="btn-preset" id="presetLocal">Localhost (Port 3000)</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn-primary" id="saveBtn">Save Settings</button>
+      <button type="button" class="btn-secondary" id="testBtn">Test Connection</button>
+    </div>
+
+    <div id="statusMessage"></div>
+
+    <div class="shortcut-tip">
+      <p><strong>Quick Controls:</strong></p>
+      <p>• <kbd>Alt + S</kbd> or click toolbar icon: Arm/Disarm stealth mode on the active tab.</p>
+      <p>• <kbd>Ctrl + V</kbd> or Drag & Drop: Send image/document to AI.</p>
+      <p>• <kbd>Shift + P</kbd>: Toggle indicator pixel size (2px / 5px / 10px).</p>
+      <p>• Left Click (when indicator turns Green): Silent clipboard copy.</p>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

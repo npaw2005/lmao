@@ -85,6 +85,37 @@ Once loaded, you can access the page securely over HTTPS:
 
 ---
 
+## 🧩 Chrome Manifest V3 Extension (Universal Stealth Mode)
+
+Instead of running an iframe or proxy server for camouflage, you can use the **Chrome MV3 Extension** (`extension/`). This allows you to browse **any real website natively** (YouTube, Moodle, Wikipedia, Google Docs, etc.) with full login state, zero `X-Frame-Options` blocks, and zero proxy latency. The remote server acts solely as an API middleman.
+
+### 🌟 Advantages Over Iframe / Reverse Proxy:
+1. **Real Native Webpages**: Never breaks logins, sessions, OAuth, or modern web apps.
+2. **Zero CORS or Navigation Errors**: Never triggers `refused to connect` or CSP errors.
+3. **Completely On-Demand**: Triggered only when clicking the extension icon or pressing <kbd>Alt + S</kbd>.
+4. **Transparent on First Load**: The top-right micro indicator stays invisible until an action occurs.
+
+### 📥 How to Install the Extension:
+1. Open Google Chrome and navigate to `chrome://extensions`.
+2. Enable **Developer mode** (toggle in the top-right corner).
+3. Click **Load unpacked**.
+4. Select the `extension/` folder inside this repository.
+5. *(Optional)* Right-click the extension icon in Chrome toolbar -> **Options** to configure your server URL (default: `https://niduka.southeastasia.cloudapp.azure.com` or `http://localhost:3000`).
+
+### 🎮 Extension Controls:
+- **<kbd>Alt + S</kbd>** (or click toolbar icon): Arm/Disarm stealth mode on the current tab (flashes amber pulse on arm).
+- **<kbd>Ctrl + V</kbd> or Drag & Drop**: Send screenshot, PDF, image, or copied text to Gemini AI.
+- **Indicator Pixel States**:
+  - Transparent: Idle / Ready.
+  - 🟡 **Amber**: Uploading & AI analyzing.
+  - 🟢 **Green**: Response ready!
+  - 🔵 **Cyan**: Clicked anywhere and copied response to clipboard.
+  - 🔴 **Red**: Network or processing error (clears automatically).
+- **<kbd>Shift + P</kbd>**: Cycle indicator pixel size (`2px` → `5px` → `10px`).
+- **Left Click**: When indicator turns green, clicking anywhere silently copies the AI response to your clipboard.
+
+---
+
 ## 🕹️ Secret Controls & Tips
 - **Toggle Indicator Size**: Press `Shift + P` on the webpage to cycle the top-right indicator pixel size (`2px` → `5px` → `10px` → `2px`) if using a high-DPI (4K/Retina) monitor.
 - **File Paste**: You can also press `Ctrl + V` anywhere on the page if you have a file or image copied to your clipboard.
