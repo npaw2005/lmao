@@ -50,16 +50,29 @@ testBtn.addEventListener('click', async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
 
-    const res = await fetch(`${url}/`, {
+    const res = await fetch(`${url}/api/health`, {
       method: 'GET',
       signal: controller.signal
+    }).catch(async () => {
+      // Fallback to root if /api/health isn't available
+      return await fetch(`${url}/`, { method: 'GET', signal: controller.signal });
     });
     clearTimeout(timeout);
 
-    if (res.ok || res.status === 404 || res.status === 200 || res.status === 302) {
+    if (res && res.ok) {
+      try {
+        const json = await res.json();
+        if (json.status === 'ok') {
+          const keyStatus = json.geminiConfigured ? 'API Key Active' : 'API Key Missing';
+          showStatus(`Connected! Model: ${json.model} (${keyStatus})`, 'var(--success)');
+          return;
+        }
+      } catch (e) {}
       showStatus(`Connected! Server responded with HTTP ${res.status}.`, 'var(--success)');
-    } else {
+    } else if (res) {
       showStatus(`Server reached with HTTP ${res.status}.`, 'var(--accent)');
+    } else {
+      showStatus(`Could not reach server.`, 'var(--error)');
     }
   } catch (err) {
     showStatus(`Connection failed: ${err.message}`, 'var(--error)');
