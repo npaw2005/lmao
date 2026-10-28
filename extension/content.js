@@ -140,6 +140,7 @@
       pixel = document.createElement('div');
       pixel.id = 'stealth-status-pixel';
       pixel.setAttribute('aria-hidden', 'true');
+      pixel.addEventListener('click', onPixelClick);
       pixel.style.cssText = [
         'display: block !important',
         'box-sizing: border-box !important',
@@ -157,7 +158,8 @@
         'opacity: 1 !important',
         'visibility: visible !important',
         'z-index: 2147483647 !important',
-        'pointer-events: none !important',
+        'pointer-events: auto !important',
+        'cursor: default !important',
         'transition: background-color 0.15s ease !important'
       ].join(';');
     } else {
@@ -248,8 +250,38 @@
     pixel.style.setProperty('border', 'none', 'important');
     pixel.style.setProperty('border-radius', '0px', 'important');
     pixel.style.setProperty('box-shadow', 'none', 'important');
-    pixel.style.setProperty('pointer-events', 'none', 'important');
+    pixel.style.setProperty('pointer-events', 'auto', 'important');
     pixel.style.setProperty('cursor', 'default', 'important');
+  }
+
+  // Mouse-only click handler on the top-right corner pixel
+  function onPixelClick(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // 1. If answer is ready, click copies it
+    if (currentColor === COLORS.READY_TO_COPY) {
+      copyResponse();
+      return;
+    }
+
+    // 2. If text is currently highlighted, click analyzes the selection
+    const selection = window.getSelection();
+    const text = selection ? selection.toString().trim() : '';
+    if (text.length > 0) {
+      if (!isArmed) {
+        isArmed = true;
+        sampleCornerColor();
+      }
+      const targetFile = new File([text], 'mcq-question.txt', { type: 'text/plain' });
+      processFile(targetFile);
+      return;
+    }
+
+    // 3. Otherwise, click toggles/arms stealth (mouse-only arming)
+    window.__STEALTH_TOGGLE__();
   }
 
   function setStatus(color) {
@@ -296,6 +328,31 @@
     if (msg.action === 'TOGGLE_STEALTH') {
       window.__STEALTH_TOGGLE__();
       sendResponse({ isArmed: isArmed });
+    } else if (msg.action === 'CHECK_AND_ANALYZE_SELECTION') {
+      const selection = window.getSelection();
+      const text = selection ? selection.toString().trim() : '';
+      if (text.length > 0) {
+        if (!isArmed) {
+          isArmed = true;
+          sampleCornerColor();
+        }
+        const targetFile = new File([text], 'mcq-question.txt', { type: 'text/plain' });
+        processFile(targetFile);
+        sendResponse({ handled: true });
+        return;
+      }
+      sendResponse({ handled: false });
+    } else if (msg.action === 'ANALYZE_EXPLICIT_TEXT') {
+      const text = (msg.text || '').trim();
+      if (text.length > 0) {
+        if (!isArmed) {
+          isArmed = true;
+          sampleCornerColor();
+        }
+        const targetFile = new File([text], 'mcq-question.txt', { type: 'text/plain' });
+        processFile(targetFile);
+        sendResponse({ success: true });
+      }
     }
   });
 
@@ -335,6 +392,27 @@
       currentSizeIndex = (currentSizeIndex + 1) % badgeSizes.length;
       setStatus(currentColor);
       console.log('[Stealth] Indicator size index:', currentSizeIndex, badgeSizes[currentSizeIndex]);
+    }
+  }, true);
+
+  // =========================================================================
+  // MOUSE-ONLY CONTROL: MIDDLE-CLICK (Scroll Wheel Click) ON HIGHLIGHTED TEXT
+  // =========================================================================
+  window.addEventListener('auxclick', function (e) {
+    if (e.button === 1) { // Middle mouse button
+      const selection = window.getSelection();
+      const text = selection ? selection.toString().trim() : '';
+
+      if (text.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isArmed) {
+          isArmed = true;
+          sampleCornerColor();
+        }
+        const targetFile = new File([text], 'mcq-question.txt', { type: 'text/plain' });
+        processFile(targetFile);
+      }
     }
   }, true);
 

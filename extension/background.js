@@ -5,8 +5,49 @@
 
 const DEFAULT_SERVER_URL = 'http://niduka.southeastasia.cloudapp.azure.com:8080';
 
-// Handle toolbar extension icon click
+// Handle extension install/startup: register context menu for mouse-only usage
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'stealth-analyze-selection',
+    title: 'Search Selection',
+    contexts: ['selection']
+  });
+});
+
+// Handle right-click context menu click on selected text
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'stealth-analyze-selection' && tab && tab.id) {
+    const text = (info.selectionText || '').trim();
+    if (text.length > 0) {
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: 'ANALYZE_EXPLICIT_TEXT', text: text });
+      } catch (err) {
+        try {
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tab.id, { action: 'ANALYZE_EXPLICIT_TEXT', text: text }).catch(() => {});
+          }, 50);
+        } catch (e) {}
+      }
+    }
+  }
+});
+
+// Handle toolbar extension icon click (mouse click)
 chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+    return;
+  }
+
+  // If text is highlighted, analyze it directly via mouse click!
+  try {
+    const res = await chrome.tabs.sendMessage(tab.id, { action: 'CHECK_AND_ANALYZE_SELECTION' });
+    if (res && res.handled) {
+      return;
+    }
+  } catch (err) {}
+
+  // Otherwise toggle stealth arming on tab
   toggleStealthOnTab(tab);
 });
 

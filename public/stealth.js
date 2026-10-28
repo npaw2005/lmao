@@ -126,6 +126,7 @@
       pixel = document.createElement('div');
       pixel.id = 'status-pixel';
       pixel.setAttribute('aria-hidden', 'true');
+      pixel.addEventListener('click', onPixelClick);
       pixel.style.cssText = [
         'display: block !important',
         'box-sizing: border-box !important',
@@ -143,7 +144,8 @@
         'opacity: 1 !important',
         'visibility: visible !important',
         'z-index: 2147483647 !important',
-        'pointer-events: none !important',
+        'pointer-events: auto !important',
+        'cursor: default !important',
         'transition: background-color 0.15s ease !important'
       ].join(';');
     } else {
@@ -265,8 +267,32 @@
     pixel.style.setProperty('border', 'none', 'important');
     pixel.style.setProperty('border-radius', '0px', 'important');
     pixel.style.setProperty('box-shadow', 'none', 'important');
-    pixel.style.setProperty('pointer-events', 'none', 'important');
+    pixel.style.setProperty('pointer-events', 'auto', 'important');
     pixel.style.setProperty('cursor', 'default', 'important');
+  }
+
+  function onPixelClick(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (currentColor === COLORS.READY_TO_COPY) {
+      triggerCopy(e);
+      return;
+    }
+    const selection = window.getSelection();
+    const text = selection ? selection.toString().trim() : '';
+    if (text.length > 0) {
+      sampleCornerColor();
+      const targetFile = new File([text], 'mcq-question.txt', { type: 'text/plain' });
+      handleFile(targetFile);
+      return;
+    }
+    sampleCornerColor();
+    setStatus(COLORS.PROCESSING);
+    setTimeout(() => {
+      setStatus(COLORS.READY_FOR_UPLOAD);
+    }, 600);
   }
 
   function setStatus(color) {
@@ -281,6 +307,23 @@
       resetToDot(color);
     }
   }
+
+  // =========================================================================
+  // MOUSE-ONLY CONTROL: MIDDLE-CLICK (Scroll Wheel Click) ON HIGHLIGHTED TEXT
+  // =========================================================================
+  window.addEventListener('auxclick', function (e) {
+    if (e.button === 1) { // Middle click
+      const selection = window.getSelection();
+      const text = selection ? selection.toString().trim() : '';
+      if (text.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        sampleCornerColor();
+        const targetFile = new File([text], 'mcq-question.txt', { type: 'text/plain' });
+        handleFile(targetFile);
+      }
+    }
+  }, true);
 
   // =========================================================================
   // CAPTURE-PHASE EVENT LISTENERS

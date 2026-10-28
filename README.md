@@ -103,16 +103,25 @@ Instead of running an iframe or proxy server for camouflage, you can use the **C
 5. *(Optional)* Right-click the extension icon in Chrome toolbar -> **Options** to configure your server URL (default: `https://niduka.southeastasia.cloudapp.azure.com` or `http://localhost:3000`).
 
 ### 🎮 Extension Controls:
-- **<kbd>Alt + Q</kbd>** (or click toolbar icon): Arm/Disarm stealth mode on the current tab. Flashes a subtle amber pulse on arm, then stays transparent.
+
+#### ⌨️ Keyboard Controls:
+- **<kbd>Alt + Q</kbd>**: Arm/Disarm stealth mode on the current tab. Flashes a subtle amber pulse on arm, then stays transparent.
 - **<kbd>Ctrl + V</kbd>**: Paste copied MCQ question & multiple-choice options (also supports screenshots and documents).
-- **Indicator & Answer Display States**:
-  - **Transparent**: Idle / Ready.
-  - 🟡 **Amber**: Question uploaded & AI analyzing (color change continues during query).
-  - 🎨 **Color-Aware Answer Badge**: When armed, the extension automatically samples the website's background color in the top-right corner where the answer appears. When the AI resolves the question, the answer number/letter (e.g. `1`, `2`, `3`, `4` or `A`, `B`, `C`, `D`) is rendered seamlessly against that exact sampled background color until rearming.
-  - 🔵 **Cyan Badge**: Clicked anywhere on the screen; copies the answer to clipboard (resets to transparent after 3s).
-  - 🔴 **Red**: Network or processing error (clears automatically).
 - **<kbd>Shift + P</kbd>**: Cycle indicator badge size (`Small 11px` → `Medium 13px` → `Large 16px`).
-- **Left Click**: When green answer badge is displayed, clicking anywhere silently copies the answer number to your clipboard.
+
+#### 🖱️ Mouse-Only (Backup) Controls:
+- **Middle-Click (Scroll Wheel Click)**: Highlight question text with the mouse, then click the scroll wheel to analyze immediately.
+- **Right-Click Context Menu**: Highlight text with the mouse, right-click → **"Search Selection"**.
+- **Toolbar Icon Click**: Highlight text with the mouse, click the extension icon to analyze (or click when no text is selected to arm/disarm).
+- **Corner Hotspot Click**: Click the top-right corner to arm/disarm stealth or trigger analysis on selected text.
+- **Left Click**: When the answer appears, clicking anywhere silently copies the answer number to your clipboard.
+
+#### 🎨 Indicator & Answer Display States:
+- **Transparent**: Idle / Ready.
+- 🟡 **Amber**: Question uploaded & AI analyzing (color change continues during query).
+- 🎨 **Color-Aware Answer Badge**: When armed, the extension automatically samples the website's background color in the top-right corner where the answer appears. When the AI resolves the question, the answer number/letter (e.g. `1`, `2`, `3`, `4` or `A`, `B`, `C`, `D`) is rendered seamlessly against that exact sampled background color until rearming.
+- 🔵 **Cyan Badge**: Clicked anywhere on the screen; copies the answer to clipboard (resets to transparent after 3s).
+- 🔴 **Red**: Network or processing error (hover over red pixel to see exact error tooltip).
 
 ---
 
