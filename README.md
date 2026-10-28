@@ -108,7 +108,7 @@ Instead of running an iframe or proxy server for camouflage, you can use the **C
 - **Indicator & Answer Display States**:
   - **Transparent**: Idle / Ready.
   - 🟡 **Amber**: Question uploaded & AI analyzing (color change continues during query).
-  - 🟢 **Green Badge with Answer Number**: AI has determined the correct option! The top-right pixel morphs into a compact green badge displaying the correct answer number/letter (e.g. `1`, `2`, `3`, `4` or `A`, `B`, `C`, `D`), readable just enough to the user.
+  - 🎨 **Color-Aware Answer Badge**: When armed, the extension automatically samples the website's background color in the top-right corner where the answer appears. When the AI resolves the question, the answer number/letter (e.g. `1`, `2`, `3`, `4` or `A`, `B`, `C`, `D`) is rendered seamlessly against that exact sampled background color until rearming.
   - 🔵 **Cyan Badge**: Clicked anywhere on the screen; copies the answer to clipboard (resets to transparent after 3s).
   - 🔴 **Red**: Network or processing error (clears automatically).
 - **<kbd>Shift + P</kbd>**: Cycle indicator badge size (`Small 11px` → `Medium 13px` → `Large 16px`).

@@ -27,6 +27,99 @@
   let copyOverlay = null;
   let pdfFrame = null;
 
+  // Color-aware session styles (sampled on load / arming)
+  let sessionBgColor = '#ffffff';
+  let sessionTextColor = '#000000';
+  let sessionBorderColor = 'rgba(0, 0, 0, 0.15)';
+
+  function parseRgba(str) {
+    if (!str) return null;
+    const match = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (!match) return null;
+    return {
+      r: parseInt(match[1], 10),
+      g: parseInt(match[2], 10),
+      b: parseInt(match[3], 10),
+      a: match[4] !== undefined ? parseFloat(match[4]) : 1
+    };
+  }
+
+  function sampleCornerColor() {
+    try {
+      const prevPixelDisplay = pixel ? pixel.style.display : '';
+      const prevOverlayDisplay = copyOverlay ? copyOverlay.style.display : '';
+      if (pixel) pixel.style.display = 'none';
+      if (copyOverlay) copyOverlay.style.display = 'none';
+
+      const w = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 1000;
+      const samplePoints = [
+        { x: Math.max(10, w - 8),  y: 8 },
+        { x: Math.max(10, w - 16), y: 12 },
+        { x: Math.max(10, w - 24), y: 16 }
+      ];
+
+      let detectedColor = null;
+
+      for (const pt of samplePoints) {
+        let el = document.elementFromPoint(pt.x, pt.y);
+        let curr = el;
+        while (curr && curr !== document && curr !== document.documentElement) {
+          const style = window.getComputedStyle(curr);
+          const bg = style.backgroundColor;
+          if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+            const parsed = parseRgba(bg);
+            if (parsed && parsed.a > 0.05) {
+              detectedColor = bg;
+              break;
+            }
+          }
+          curr = curr.parentElement;
+        }
+        if (detectedColor) break;
+      }
+
+      if (pixel) pixel.style.display = prevPixelDisplay;
+      if (copyOverlay) copyOverlay.style.display = prevOverlayDisplay;
+
+      if (!detectedColor) {
+        const bodyStyle = document.body ? window.getComputedStyle(document.body) : null;
+        const htmlStyle = document.documentElement ? window.getComputedStyle(document.documentElement) : null;
+
+        if (bodyStyle && bodyStyle.backgroundColor && bodyStyle.backgroundColor !== 'transparent' && bodyStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          detectedColor = bodyStyle.backgroundColor;
+        } else if (htmlStyle && htmlStyle.backgroundColor && htmlStyle.backgroundColor !== 'transparent' && htmlStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          detectedColor = htmlStyle.backgroundColor;
+        }
+      }
+
+      if (!detectedColor) {
+        const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        detectedColor = isDark ? '#121212' : '#ffffff';
+      }
+
+      sessionBgColor = detectedColor;
+
+      const parsed = parseRgba(sessionBgColor);
+      if (parsed) {
+        const lum = 0.299 * parsed.r + 0.587 * parsed.g + 0.114 * parsed.b;
+        if (lum < 60) {
+          sessionTextColor = '#ffffff';
+          sessionBorderColor = 'rgba(255, 255, 255, 0.15)';
+        } else {
+          sessionTextColor = '#000000';
+          sessionBorderColor = 'rgba(0, 0, 0, 0.15)';
+        }
+      } else {
+        sessionTextColor = '#000000';
+        sessionBorderColor = 'rgba(0, 0, 0, 0.15)';
+      }
+    } catch (e) {
+      sessionBgColor = '#ffffff';
+      sessionTextColor = '#000000';
+      sessionBorderColor = 'rgba(0, 0, 0, 0.15)';
+    }
+  }
+
   function createElements() {
     // 1. Status Indicator / Answer Badge Element
     if (!document.getElementById('status-pixel')) {
@@ -121,7 +214,10 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', createElements);
   }
-  window.addEventListener('load', createElements);
+  window.addEventListener('load', () => {
+    createElements();
+    sampleCornerColor();
+  });
   setInterval(createElements, 1000);
 
   function showAnswerBadge(text) {
@@ -139,10 +235,11 @@
     pixel.style.setProperty('font-size', sz.fontSize, 'important');
     pixel.style.setProperty('font-weight', 'bold', 'important');
     pixel.style.setProperty('font-family', 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', 'important');
-    pixel.style.setProperty('color', '#000000', 'important');
-    pixel.style.setProperty('background-color', COLORS.READY_TO_COPY, 'important'); // Green
+    pixel.style.setProperty('color', sessionTextColor, 'important');
+    pixel.style.setProperty('background-color', sessionBgColor, 'important');
+    pixel.style.setProperty('border', '1px solid ' + sessionBorderColor, 'important');
     pixel.style.setProperty('border-radius', '2px', 'important');
-    pixel.style.setProperty('box-shadow', '0 1px 3px rgba(0,0,0,0.5)', 'important');
+    pixel.style.setProperty('box-shadow', 'none', 'important');
     pixel.style.setProperty('pointer-events', 'auto', 'important');
     pixel.style.setProperty('cursor', 'pointer', 'important');
   }
@@ -152,6 +249,7 @@
     pixel.textContent = cachedResponse || '✓';
     pixel.style.setProperty('background-color', COLORS.COPIED, 'important'); // Cyan
     pixel.style.setProperty('color', '#000000', 'important');
+    pixel.style.setProperty('border', 'none', 'important');
   }
 
   function resetToDot(color) {
@@ -164,6 +262,7 @@
     pixel.style.setProperty('min-width', '0px', 'important');
     pixel.style.setProperty('padding', '0px', 'important');
     pixel.style.setProperty('background-color', color, 'important');
+    pixel.style.setProperty('border', 'none', 'important');
     pixel.style.setProperty('border-radius', '0px', 'important');
     pixel.style.setProperty('box-shadow', 'none', 'important');
     pixel.style.setProperty('pointer-events', 'none', 'important');
