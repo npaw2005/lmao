@@ -246,14 +246,6 @@
     pixel.style.setProperty('cursor', 'pointer', 'important');
   }
 
-  function showCopiedBadge() {
-    if (!pixel) return;
-    pixel.textContent = cachedResponse || '✓';
-    pixel.style.setProperty('background-color', COLORS.COPIED, 'important'); // Cyan
-    pixel.style.setProperty('color', '#000000', 'important');
-    pixel.style.setProperty('border', 'none', 'important');
-  }
-
   function resetToDot(color) {
     if (!pixel) return;
     pixel.textContent = '';
@@ -277,7 +269,7 @@
       e.stopPropagation();
     }
     if (currentColor === COLORS.READY_TO_COPY) {
-      triggerCopy(e);
+      dismissAnswer();
       return;
     }
     const selection = window.getSelection();
@@ -301,8 +293,6 @@
 
     if (color === COLORS.READY_TO_COPY) {
       showAnswerBadge(cachedResponse);
-    } else if (color === COLORS.COPIED) {
-      showCopiedBadge();
     } else {
       resetToDot(color);
     }
@@ -457,9 +447,9 @@
         }
 
         if (copyOverlay) {
-          copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
+          copyOverlay.style.setProperty('pointer-events', 'none', 'important');
         }
-        console.log(`[Stealth] MCQ Answer Ready: "${cachedResponse}". Click anywhere to copy.`);
+        console.log(`[Stealth] MCQ Answer Ready: "${cachedResponse}". Disappears on first click.`);
         isUploading = false;
       } else {
         throw new Error(data.error || 'Invalid response format');
@@ -474,61 +464,32 @@
     });
   }
 
-  function triggerCopy(e) {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+  // =========================================================================
+  // DISMISS & SILENT COPY ON FIRST CLICK (NO COLOR CHANGES)
+  // =========================================================================
+  function dismissAnswer() {
+    if (currentColor !== COLORS.READY_TO_COPY) return;
+
+    // Silently copy to clipboard in background (without blocking or delaying UI)
+    if (cachedResponse && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cachedResponse).catch(() => {});
     }
-    if (!cachedResponse) return;
 
-    copyToClipboard(cachedResponse)
-      .then(() => {
-        console.log('[Stealth] Copied answer to clipboard:', cachedResponse);
-        setStatus(COLORS.COPIED); // Cyan badge
-
-        if (copyOverlay) {
-          copyOverlay.style.setProperty('pointer-events', 'none', 'important');
-        }
-
-        setTimeout(() => {
-          setStatus(COLORS.READY_FOR_UPLOAD);
-        }, 3000);
-      })
-      .catch(err => {
-        console.error('[Clipboard Error]:', err);
-        setStatus(COLORS.ERROR);
-      });
+    // Immediately dismiss the badge back to transparent with zero color changes!
+    setStatus(COLORS.READY_FOR_UPLOAD);
+    if (copyOverlay) {
+      copyOverlay.style.setProperty('pointer-events', 'none', 'important');
+    }
+    console.log('[Stealth] Answer dismissed on first click.');
   }
 
+  // Dismiss immediately upon the first click anywhere on the webpage
+  // Does NOT block the click with e.preventDefault() so user's click naturally selects the page option/button!
   window.addEventListener('click', function (e) {
     if (currentColor === COLORS.READY_TO_COPY) {
-      triggerCopy(e);
+      dismissAnswer();
     }
   }, true);
-
-  function copyToClipboard(text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text);
-    }
-    return new Promise((resolve, reject) => {
-      try {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        textarea.style.left = '-9999px';
-        document.documentElement.appendChild(textarea);
-        textarea.select();
-        const ok = document.execCommand('copy');
-        document.documentElement.removeChild(textarea);
-        if (ok) resolve();
-        else reject(new Error('execCommand failed'));
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
 
   // Shift + P: Cycle indicator badge / dot size
   window.addEventListener('keydown', function (e) {

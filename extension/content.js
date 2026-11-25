@@ -229,14 +229,6 @@
     pixel.style.setProperty('cursor', 'pointer', 'important');
   }
 
-  function showCopiedBadge() {
-    if (!pixel) return;
-    pixel.textContent = cachedResponse || '✓';
-    pixel.style.setProperty('background-color', COLORS.COPIED, 'important'); // Cyan
-    pixel.style.setProperty('color', '#000000', 'important');
-    pixel.style.setProperty('border', 'none', 'important');
-  }
-
   function resetToDot(color) {
     if (!pixel) return;
     pixel.textContent = '';
@@ -261,9 +253,9 @@
       e.stopPropagation();
     }
 
-    // 1. If answer is ready, click copies it
+    // 1. If answer is ready, click immediately dismisses it
     if (currentColor === COLORS.READY_TO_COPY) {
-      copyResponse();
+      dismissAnswer();
       return;
     }
 
@@ -290,8 +282,6 @@
 
     if (color === COLORS.READY_TO_COPY) {
       showAnswerBadge(cachedResponse);
-    } else if (color === COLORS.COPIED) {
-      showCopiedBadge();
     } else {
       resetToDot(color);
     }
@@ -338,9 +328,9 @@
       if (pixel) pixel.title = '';
       setStatus(COLORS.READY_TO_COPY); // Color-aware badge with answer number/letter
       if (copyOverlay) {
-        copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
+        copyOverlay.style.setProperty('pointer-events', 'none', 'important');
       }
-      console.log(`[Stealth] Webview Screenshot Answer Ready: "${cachedResponse}". Click anywhere to copy.`);
+      console.log(`[Stealth] Webview Screenshot Answer Ready: "${cachedResponse}". Disappears on first click.`);
       sendResponse({ status: 'displayed' });
     } else if (msg.action === 'SHOW_ERROR') {
       isUploading = false;
@@ -553,12 +543,11 @@
 
         cachedResponse = (res.data.response || '').trim();
         if (pixel) pixel.title = '';
-        // Green badge with the answer number!
         setStatus(COLORS.READY_TO_COPY);
         if (copyOverlay) {
-          copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
+          copyOverlay.style.setProperty('pointer-events', 'none', 'important');
         }
-        console.log(`[Stealth] MCQ Answer Ready: "${cachedResponse}". Click anywhere to copy.`);
+        console.log(`[Stealth] MCQ Answer Ready: "${cachedResponse}". Disappears on first click.`);
       });
     };
     reader.onerror = function () {
@@ -569,52 +558,29 @@
   }
 
   // =========================================================================
-  // CLICK-TO-COPY INTERCEPTION
+  // DISMISS & SILENT COPY ON FIRST CLICK (NO COLOR CHANGES)
   // =========================================================================
-  function copyResponse() {
-    if (!cachedResponse) return;
+  function dismissAnswer() {
+    if (currentColor !== COLORS.READY_TO_COPY) return;
 
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(cachedResponse).then(onCopySuccess).catch(fallbackCopy);
-    } else {
-      fallbackCopy();
+    // Silently copy to clipboard in background (without blocking or delaying UI)
+    if (cachedResponse && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cachedResponse).catch(() => {});
     }
-  }
 
-  function fallbackCopy() {
-    const ta = document.createElement('textarea');
-    ta.value = cachedResponse;
-    ta.style.position = 'fixed';
-    ta.style.top = '-9999px';
-    document.documentElement.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      onCopySuccess();
-    } catch (e) {
-      console.error('[Stealth Copy Error]:', e);
-    }
-    document.documentElement.removeChild(ta);
-  }
-
-  function onCopySuccess() {
-    setStatus(COLORS.COPIED); // Cyan badge
+    // Immediately dismiss the badge back to transparent with zero color changes!
+    setStatus(COLORS.READY_FOR_UPLOAD);
     if (copyOverlay) {
       copyOverlay.style.setProperty('pointer-events', 'none', 'important');
     }
-    console.log('[Stealth] Answer copied to clipboard:', cachedResponse);
-
-    setTimeout(() => {
-      setStatus(COLORS.READY_FOR_UPLOAD);
-    }, 3000);
+    console.log('[Stealth] Answer dismissed on first click.');
   }
 
-  // Intercept click on document or badge when ready to copy
-  document.addEventListener('click', function (e) {
+  // Dismiss immediately upon the first click anywhere on the webpage
+  // Does NOT block the click with e.preventDefault() so user's click naturally selects the page option/button!
+  window.addEventListener('click', function (e) {
     if (currentColor === COLORS.READY_TO_COPY) {
-      e.preventDefault();
-      e.stopPropagation();
-      copyResponse();
+      dismissAnswer();
     }
   }, true);
 
