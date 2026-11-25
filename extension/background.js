@@ -1,11 +1,11 @@
 // =========================================================================
 // BACKGROUND SERVICE WORKER (Manifest V3)
-// Handles activation, script injection, and API forwarding (exempt from CORS)
+// Handles 1-click webview screenshot capture, API forwarding, and stealth response
 // =========================================================================
 
 const DEFAULT_SERVER_URL = 'http://niduka.southeastasia.cloudapp.azure.com:8080';
 
-// Handle extension install/startup: register context menu for mouse-only usage
+// Handle extension install/startup: register context menu for optional selection backup
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: 'stealth-analyze-selection',
@@ -33,57 +33,93 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// Handle toolbar extension icon click (mouse click)
+// 1-Click Pinned Extension Icon Trigger: Captures the visible webview and sends to AI
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
     return;
   }
-
-  // If text is highlighted, analyze it directly via mouse click!
-  try {
-    const res = await chrome.tabs.sendMessage(tab.id, { action: 'CHECK_AND_ANALYZE_SELECTION' });
-    if (res && res.handled) {
-      return;
-    }
-  } catch (err) {}
-
-  // Otherwise toggle stealth arming on tab
-  toggleStealthOnTab(tab);
+  await captureTabAndAnalyze(tab);
 });
 
-// Handle keyboard shortcut (Alt + Q)
+// Keyboard shortcut (Alt + Q): Also triggers the instant 1-click webview capture
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'toggle-stealth') {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab) toggleStealthOnTab(tab);
+    if (tab) {
+      await captureTabAndAnalyze(tab);
+    }
   }
 });
 
-async function toggleStealthOnTab(tab) {
+// Main Webview Screenshot Capture & AI Dispatcher
+async function captureTabAndAnalyze(tab) {
   if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
     return;
   }
 
+  // 1. Ensure content script is mounted and trigger START_ANALYSIS (amber dot + sample corner color)
   try {
-    // Check if content script is active on tab and toggle it
-    await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_STEALTH' });
+    await chrome.tabs.sendMessage(tab.id, { action: 'START_ANALYSIS' });
   } catch (err) {
-    // Content script not yet present (e.g. tab opened before extension loaded/updated)
-    // Inject it now and trigger toggle
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ['content.js']
       });
-      // Small tick to ensure script execution listeners are set
-      setTimeout(async () => {
-        try {
-          await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_STEALTH' });
-        } catch (e) {}
-      }, 50);
+      await new Promise(r => setTimeout(r, 60));
+      await chrome.tabs.sendMessage(tab.id, { action: 'START_ANALYSIS' }).catch(() => {});
     } catch (injectErr) {
-      console.error('[Background] Injection failed:', injectErr);
+      console.error('[Background] Script injection failed:', injectErr);
     }
+  }
+
+  // 2. Capture the exact visible webview as a high-quality, lightweight JPEG
+  let dataUrl;
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId || null, { format: 'jpeg', quality: 80 });
+  } catch (capErr) {
+    console.error('[Background] Failed to capture visible tab:', capErr);
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'SHOW_ERROR',
+      error: 'Capture failed: ' + (capErr.message || 'unknown error')
+    }).catch(() => {});
+    return;
+  }
+
+  if (!dataUrl || !dataUrl.includes(',')) {
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'SHOW_ERROR',
+      error: 'Empty screenshot capture data'
+    }).catch(() => {});
+    return;
+  }
+
+  const base64Data = dataUrl.split(',')[1];
+  console.log(`[Background] Captured webview screenshot (${Math.round(base64Data.length * 0.75 / 1024)} KB). Sending to AI...`);
+
+  // 3. Forward screenshot to remote backend server
+  try {
+    const result = await handleFileUpload({
+      fileBase64: base64Data,
+      filename: 'webview-screenshot.jpg',
+      mimeType: 'image/jpeg'
+    });
+
+    const answer = (result && result.response) ? result.response.trim() : '';
+    console.log(`[Background] AI Answer received: "${answer}"`);
+
+    // 4. Send the answer to content script to display the color-aware answer badge
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'SHOW_ANSWER',
+      response: answer
+    }).catch(() => {});
+
+  } catch (apiErr) {
+    console.error('[Background] Screenshot analysis failed:', apiErr);
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'SHOW_ERROR',
+      error: apiErr.message || 'Analysis failed'
+    }).catch(() => {});
   }
 }
 
@@ -106,13 +142,19 @@ async function getServerUrl() {
   return url;
 }
 
-// Forward file uploads from content script to middleman server
+// Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'ANALYZE_FILE') {
     handleFileUpload(request)
       .then(result => sendResponse({ success: true, data: result }))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true; // Keep message channel open for asynchronous sendResponse
+  } else if (request.action === 'CAPTURE_WEBVIEW') {
+    if (sender && sender.tab) {
+      captureTabAndAnalyze(sender.tab);
+    }
+    sendResponse({ started: true });
+    return false;
   }
 });
 
@@ -130,7 +172,7 @@ async function handleFileUpload(request) {
   const fileBlob = new Blob([byteArray], { type: mimeType });
 
   const formData = new FormData();
-  formData.append('file', fileBlob, filename || 'question.txt');
+  formData.append('file', fileBlob, filename || 'upload.bin');
   if (prompt) {
     formData.append('prompt', prompt);
   }

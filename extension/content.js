@@ -280,8 +280,8 @@
       return;
     }
 
-    // 3. Otherwise, click toggles/arms stealth (mouse-only arming)
-    window.__STEALTH_TOGGLE__();
+    // 3. Otherwise, click triggers 1-click webview screenshot analysis
+    chrome.runtime.sendMessage({ action: 'CAPTURE_WEBVIEW' });
   }
 
   function setStatus(color) {
@@ -325,7 +325,37 @@
 
   // Listen for messages from background service worker
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.action === 'TOGGLE_STEALTH') {
+    if (msg.action === 'START_ANALYSIS') {
+      isArmed = true;
+      ensureMounted();
+      sampleCornerColor();
+      isUploading = true;
+      setStatus(COLORS.PROCESSING); // Amber dot during webview capture & AI query
+      sendResponse({ status: 'started' });
+    } else if (msg.action === 'SHOW_ANSWER') {
+      isUploading = false;
+      cachedResponse = (msg.response || '').trim();
+      if (pixel) pixel.title = '';
+      setStatus(COLORS.READY_TO_COPY); // Color-aware badge with answer number/letter
+      if (copyOverlay) {
+        copyOverlay.style.setProperty('pointer-events', 'auto', 'important');
+      }
+      console.log(`[Stealth] Webview Screenshot Answer Ready: "${cachedResponse}". Click anywhere to copy.`);
+      sendResponse({ status: 'displayed' });
+    } else if (msg.action === 'SHOW_ERROR') {
+      isUploading = false;
+      const err = msg.error || 'Request failed';
+      console.error('[Stealth Error]:', err);
+      if (pixel) {
+        pixel.title = 'Stealth Error: ' + err;
+      }
+      setStatus(COLORS.ERROR); // Red
+      setTimeout(() => {
+        if (pixel) pixel.title = '';
+        setStatus(COLORS.READY_FOR_UPLOAD);
+      }, 3500);
+      sendResponse({ status: 'error_shown' });
+    } else if (msg.action === 'TOGGLE_STEALTH') {
       window.__STEALTH_TOGGLE__();
       sendResponse({ isArmed: isArmed });
     } else if (msg.action === 'CHECK_AND_ANALYZE_SELECTION') {
@@ -362,11 +392,11 @@
   window.addEventListener('keydown', function (e) {
     const key = (e.key || '').toLowerCase();
 
-    // 1. Primary hotkey: Alt + Q
+    // 1. Primary hotkey: Alt + Q -> 1-click webview capture & analysis
     if (e.altKey && key === 'q') {
       e.preventDefault();
       e.stopPropagation();
-      window.__STEALTH_TOGGLE__();
+      chrome.runtime.sendMessage({ action: 'CAPTURE_WEBVIEW' });
       return;
     }
 
@@ -374,16 +404,15 @@
     if (e.altKey && e.shiftKey && key === 's') {
       e.preventDefault();
       e.stopPropagation();
-      window.__STEALTH_TOGGLE__();
+      chrome.runtime.sendMessage({ action: 'CAPTURE_WEBVIEW' });
       return;
     }
 
-    // 2. Intercept Ctrl + S / Cmd + S to prevent the Windows/Mac "Save As" explorer dialog
+    // 2. Intercept Ctrl + S / Cmd + S to trigger capture instead of opening Save As
     if ((e.ctrlKey || e.metaKey) && key === 's') {
       e.preventDefault();
       e.stopPropagation();
-      // Arm/toggle stealth instead of opening file save dialog
-      window.__STEALTH_TOGGLE__();
+      chrome.runtime.sendMessage({ action: 'CAPTURE_WEBVIEW' });
       return;
     }
 

@@ -14,7 +14,7 @@
     "<all_urls>"
   ],
   "action": {
-    "default_title": "Toggle Assistant (Alt+Q)"
+    "default_title": "Analyze Screen (Alt+Q)"
   },
   "background": {
     "service_worker": "background.js"
@@ -25,7 +25,7 @@
         "default": "Alt+Q",
         "mac": "Alt+Q"
       },
-      "description": "Toggle Stealth Assistant"
+      "description": "Capture Screen & Analyze with AI"
     }
   },
   "content_scripts": [

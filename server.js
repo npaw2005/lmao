@@ -16,7 +16,7 @@ const app = express();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || 
-  "TASK: You are an expert examination assistant. Analyze the provided question and multiple-choice options (provided as text or attachment).\n" +
+  "TASK: You are an expert examination assistant. Analyze the provided webpage screenshot / document / question and its multiple-choice options (including any diagrams, code snippets, or formulas shown in the image or text).\n" +
   "Determine the correct answer.\n" +
   "CRITICAL INSTRUCTIONS:\n" +
   "1. Output ONLY the number (e.g. 1, 2, 3, 4) or letter (e.g. A, B, C, D) corresponding to the single correct option.\n" +
